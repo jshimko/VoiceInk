@@ -56,7 +56,7 @@ env:
     sh: pwd
 
 # Task output settings
-output: prefixed
+output: interleaved
 interval: 100ms
 
 # Main Tasks
