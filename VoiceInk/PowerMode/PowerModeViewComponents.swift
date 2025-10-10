@@ -138,7 +138,7 @@ struct ConfigurationRow: View {
         return max(0, appCount - maxAppIconsToShow)
     }
     
-    private var visibleAppConfigs: [AppConfig] {
+    private var visibleAppConfigs: [PowerModeAppConfig] {
         return Array(config.appConfigs?.prefix(maxAppIconsToShow) ?? [])
     }
     

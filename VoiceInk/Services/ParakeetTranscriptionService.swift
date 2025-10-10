@@ -8,7 +8,7 @@ class ParakeetTranscriptionService: TranscriptionService {
     private var asrManager: AsrManager?  
     private var vadManager: VadManager?  
     private let customModelsDirectory: URL?  
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink.parakeet", category: "ParakeetTranscriptionService")
+    private let logger = Logger(subsystem: "(AppConfig.shared.loggerSubsystem).parakeet", category: "ParakeetTranscriptionService")
       
     init(customModelsDirectory: URL? = nil) {  
         self.customModelsDirectory = customModelsDirectory  

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- REQUIRED: Your organization's bundle identifier prefix -->
+	<key>BundleIdentifierPrefix</key>
+	<string>com.yourdomain</string>
+
+	<!-- REQUIRED: Support email for user inquiries -->
+	<key>SupportEmail</key>
+	<string>support@yourdomain.com</string>
+
+	<!-- OPTIONAL: Your project/fork name (defaults to "VoiceInk") -->
+	<key>AppName</key>
+	<string>VoiceInk</string>
+
+	<!-- OPTIONAL: Website URL (omit to hide website links) -->
+	<key>WebsiteURL</key>
+	<string>https://yourdomain.com</string>
+
+	<!-- OPTIONAL: Documentation URL (omit to hide docs link) -->
+	<key>DocsURL</key>
+	<string>https://yourdomain.com/docs</string>
+
+	<!-- OPTIONAL: Discord or community URL (omit to hide community link) -->
+	<key>DiscordURL</key>
+	<string></string>
+
+	<!-- OPTIONAL: Purchase/upgrade URL (omit to disable purchase flow) -->
+	<key>PurchaseURL</key>
+	<string></string>
+
+	<!-- OPTIONAL: Donation URL (omit to hide tip jar) -->
+	<key>DonationURL</key>
+	<string></string>
+
+	<!-- OPTIONAL: Changelog/releases URL (omit to hide changelog link) -->
+	<key>ChangelogURL</key>
+	<string>https://github.com/yourusername/VoiceInk/releases</string>
+
+	<!-- OPTIONAL: License portal URL (omit to hide license management portal) -->
+	<key>LicensePortalURL</key>
+	<string></string>
+
+	<!-- Feature Flags -->
+
+	<!-- Show purchase/pro upgrade options in UI -->
+	<key>ShowPurchaseOptions</key>
+	<false/>
+
+	<!-- Show community links (Discord, etc.) in UI -->
+	<key>ShowCommunityLinks</key>
+	<false/>
+
+	<!-- Enable license validation (set to false for unlimited free use) -->
+	<key>EnableLicenseValidation</key>
+	<false/>
+
+	<!-- Show tip jar/donation link -->
+	<key>ShowDonationLink</key>
+	<false/>
+
+	<!-- Enable auto-update checks (requires Sparkle configuration) -->
+	<key>EnableAutoUpdates</key>
+	<false/>
+
+	<!-- Enable announcements service (periodic check for in-app announcements) -->
+	<key>EnableAnnouncements</key>
+	<false/>
+
+	<!-- Enable analytics service (usage tracking and telemetry) -->
+	<key>EnableAnalytics</key>
+	<false/>
+
+	<!-- OPTIONAL: Sparkle update feed URL (required if EnableAutoUpdates is true) -->
+	<key>SparkleUpdateURL</key>
+	<string></string>
+
+	<!-- OPTIONAL: License validation API URL (required if EnableLicenseValidation is true) -->
+	<key>LicenseValidationURL</key>
+	<string></string>
+
+	<!-- OPTIONAL: Announcements feed URL (required if EnableAnnouncements is true) -->
+	<key>AnnouncementsURL</key>
+	<string></string>
+
+	<!-- OPTIONAL: Analytics API token (required if EnableAnalytics is true) -->
+	<key>AnalyticsAPIToken</key>
+	<string></string>
+
+	<!-- OPTIONAL: Analytics organization ID (required if EnableAnalytics is true) -->
+	<key>AnalyticsOrganizationID</key>
+	<string></string>
+
+	<!-- Logger subsystem identifier (used for Console.app filtering) -->
+	<key>LoggerSubsystem</key>
+	<string>com.yourdomain.voiceink</string>
+</dict>
+</plist>

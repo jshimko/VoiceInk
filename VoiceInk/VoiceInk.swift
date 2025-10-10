@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
+#if canImport(Sparkle)
 import Sparkle
+#endif
 import AppKit
 import OSLog
 import AppIntents
@@ -29,7 +31,7 @@ struct VoiceInkApp: App {
     
     init() {
         // Configure FluidAudio logging subsystem
-        AppLogger.defaultSubsystem = "com.prakashjoshipax.voiceink.parakeet"
+        AppLogger.defaultSubsystem = "\(AppConfig.shared.loggerSubsystem).parakeet"
         
         do {
             let schema = Schema([
@@ -37,8 +39,7 @@ struct VoiceInkApp: App {
             ])
             
             // Create app-specific Application Support directory URL
-            let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("com.prakashjoshipax.VoiceInk", isDirectory: true)
+            let appSupportURL = AppConfig.shared.applicationSupportPath
             
             // Create the directory if it doesn't exist
             try? FileManager.default.createDirectory(at: appSupportURL, withIntermediateDirectories: true)
@@ -109,19 +110,24 @@ struct VoiceInkApp: App {
                     .environmentObject(enhancementService)
                     .modelContainer(container)
                     .onAppear {
-                        updaterViewModel.silentlyCheckForUpdates()
-                        if enableAnnouncements {
+                        // Conditionally start announcements service
+                        if AppConfig.shared.enableAnnouncements {
                             AnnouncementsService.shared.start()
                         }
-                        
+
+                        // Conditionally track app launch for analytics
+                        if AppConfig.shared.enableAnalytics {
+                            PolarService().trackAppLaunch()
+                        }
+
                         // Start the transcription auto-cleanup service (handles immediate and scheduled transcript deletion)
                         transcriptionAutoCleanupService.startMonitoring(modelContext: container.mainContext)
-                        
+
                         // Start the automatic audio cleanup process only if transcript cleanup is not enabled
                         if !UserDefaults.standard.bool(forKey: "IsTranscriptionCleanupEnabled") {
                             audioCleanupManager.startAutomaticCleanup(modelContext: container.mainContext)
                         }
-                        
+
                         // Process any pending open-file request now that the main ContentView is ready.
                         if let pendingURL = appDelegate.pendingOpenFileURL {
                             NotificationCenter.default.post(name: .navigateToDestination, object: nil, userInfo: ["destination": "Transcribe Audio"])
@@ -135,12 +141,16 @@ struct VoiceInkApp: App {
                         WindowManager.shared.configureWindow(window)
                     })
                     .onDisappear {
-                        AnnouncementsService.shared.stop()
+                        // Conditionally stop announcements service
+                        if AppConfig.shared.enableAnnouncements {
+                            AnnouncementsService.shared.stop()
+                        }
+
                         whisperState.unloadModel()
-                        
+
                         // Stop the transcription auto-cleanup service
                         transcriptionAutoCleanupService.stopMonitoring()
-                        
+
                         // Stop the automatic audio cleanup process
                         audioCleanupManager.stopAutomaticCleanup()
                     }
@@ -197,36 +207,67 @@ struct VoiceInkApp: App {
     }
 }
 
+// UpdaterViewModel with conditional Sparkle support based on feature flag
 class UpdaterViewModel: ObservableObject {
-    @AppStorage("autoUpdateCheck") private var autoUpdateCheck = true
-    
-    private let updaterController: SPUStandardUpdaterController
-    
+    @AppStorage("autoUpdateCheck") private var autoUpdateCheck = false
     @Published var canCheckForUpdates = false
-    
+
+    #if canImport(Sparkle)
+    private var updaterController: SPUStandardUpdaterController?
+    #endif
+
+    private let config = AppConfig.shared
+
     init() {
-        updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
-        
-        // Enable automatic update checking
-        updaterController.updater.automaticallyChecksForUpdates = autoUpdateCheck
-        updaterController.updater.updateCheckInterval = 24 * 60 * 60
-        
-        updaterController.updater.publisher(for: \.canCheckForUpdates)
-            .assign(to: &$canCheckForUpdates)
+        #if canImport(Sparkle)
+        if config.enableAutoUpdates {
+            // Initialize Sparkle when auto-updates are enabled
+            // Note: The feedURL should be configured in Info.plist with SUFeedURL key
+            // or passed during initialization
+            updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+
+            // Enable automatic update checking
+            updaterController?.updater.automaticallyChecksForUpdates = autoUpdateCheck
+            updaterController?.updater.updateCheckInterval = 24 * 60 * 60
+
+            updaterController?.updater.publisher(for: \.canCheckForUpdates)
+                .assign(to: &$canCheckForUpdates)
+        } else {
+            print("Auto-updates disabled via configuration")
+        }
+        #else
+        print("Sparkle framework not available - auto-updates disabled")
+        #endif
     }
-    
+
     func toggleAutoUpdates(_ value: Bool) {
-        updaterController.updater.automaticallyChecksForUpdates = value
+        #if canImport(Sparkle)
+        if config.enableAutoUpdates {
+            updaterController?.updater.automaticallyChecksForUpdates = value
+        }
+        #endif
     }
-    
+
     func checkForUpdates() {
-        // This is for manual checks - will show UI
-        updaterController.checkForUpdates(nil)
+        #if canImport(Sparkle)
+        if config.enableAutoUpdates {
+            // This is for manual checks - will show UI
+            updaterController?.checkForUpdates(nil)
+        } else {
+            print("Auto-updates disabled via configuration")
+        }
+        #else
+        print("Auto-updates disabled - Sparkle not available")
+        #endif
     }
-    
+
     func silentlyCheckForUpdates() {
-        // This checks for updates in the background without showing UI unless an update is found
-        updaterController.updater.checkForUpdatesInBackground()
+        #if canImport(Sparkle)
+        if config.enableAutoUpdates {
+            // This checks for updates in the background without showing UI unless an update is found
+            updaterController?.updater.checkForUpdatesInBackground()
+        }
+        #endif
     }
 }
 

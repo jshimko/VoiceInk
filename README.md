@@ -1,3 +1,63 @@
+# VoiceInk Fork - Privacy-Focused Edition
+
+> **This is a forked version of VoiceInk with all external communication removed**
+>
+> Changes in this fork:
+> - ✅ Auto-update functionality disabled (no Sparkle framework)
+> - ✅ License validation removed (operates without restrictions)
+> - ✅ Announcements service disabled
+> - ✅ Developer telemetry removed
+> - ✅ All phone-home functionality eliminated
+>
+> This fork operates completely offline and independently without any connection to the original developer's infrastructure.
+
+## 🔧 Fork Configuration
+
+This fork includes a **configurable architecture** that allows you to customize all branding and external links without modifying code:
+
+### Quick Setup for Your Own Fork
+
+1. **Run the setup script:**
+   ```bash
+   ./scripts/setup-fork.sh
+   ```
+   This interactive script will:
+   - Configure your bundle identifier
+   - Set your support email
+   - Configure optional features (community links, donations, etc.)
+   - Update all project files automatically
+
+2. **Manual Configuration (Alternative):**
+   - Copy `Fork.plist.template` to `Fork.plist`
+   - Edit `Fork.plist` with your organization's details
+   - Add `Fork.plist` to the Xcode project
+
+### Configuration Options
+
+All configuration is centralized in `Fork.plist`:
+
+| Key | Description | Required |
+|-----|-------------|----------|
+| `BundleIdentifierPrefix` | Your organization's bundle ID (e.g., `com.yourdomain`) | ✅ |
+| `SupportEmail` | Email for user support | ✅ |
+| `AppName` | Your app name (defaults to "VoiceInk") | Optional |
+| `WebsiteURL` | Your website URL | Optional |
+| `DocsURL` | Documentation URL | Optional |
+| `ChangelogURL` | GitHub/GitLab releases URL | Optional |
+| `ShowPurchaseOptions` | Enable purchase UI (true/false) | Optional |
+| `ShowCommunityLinks` | Show community links (true/false) | Optional |
+
+Features automatically hide when their URLs aren't configured, keeping the UI clean.
+
+### Privacy Features
+
+- ✅ **No telemetry or analytics**
+- ✅ **No auto-updates** (unless you configure them)
+- ✅ **No license validation** (operates freely)
+- ✅ **All external communication is optional and configurable**
+
+---
+
 <div align="center">
   <img src="VoiceInk/Assets.xcassets/AppIcon.appiconset/256-mac.png" width="180" height="180" />
   <h1>VoiceInk</h1>
@@ -8,19 +68,12 @@
   [![GitHub release (latest by date)](https://img.shields.io/github/v/release/Beingpax/VoiceInk)](https://github.com/Beingpax/VoiceInk/releases)
   ![GitHub all releases](https://img.shields.io/github/downloads/Beingpax/VoiceInk/total)
   ![GitHub stars](https://img.shields.io/github/stars/Beingpax/VoiceInk?style=social)
-  <p>
-    <a href="https://tryvoiceink.com">Website</a> •
-    <a href="https://www.youtube.com/@tryvoiceink">YouTube</a>
-  </p>
-
-  <a href="https://tryvoiceink.com">
-    <img src="https://img.shields.io/badge/Download%20Now-Latest%20Version-blue?style=for-the-badge&logo=apple" alt="Download VoiceInk" width="250"/>
-  </a>
+  <!-- Original links removed - this fork operates independently -->
 </div>
 
 ---
 
-VoiceInk is a native macOS application that transcribes what you say to text almost instantly. You can find all the information and download the app from [here](https://tryvoiceink.com). 
+VoiceInk is a native macOS application that transcribes what you say to text almost instantly. This fork removes all external communication and operates completely offline. 
 
 ![VoiceInk Mac App](https://github.com/user-attachments/assets/12367379-83e7-48a6-b52c-4488a6a04bba)
 
@@ -42,7 +95,7 @@ My goal is to make it **the most efficient and privacy-focused voice-to-text sol
 ## Get Started
 
 ### Download
-Get the latest version with a free trial from [tryvoiceink.com](https://tryvoiceink.com). Your purchase helps me work on VoiceInk full-time and continuously improve it with new features and updates.
+This fork must be built from source - see the Building section below. It operates without any license restrictions.
 
 #### Homebrew
 Alternatively, you can install VoiceInk via `brew`:
@@ -102,3 +155,18 @@ If you encounter any issues or have questions, please:
 ---
 
 Made with ❤️ by Pax
+
+
+## 🎯 Feature Flag System
+
+This fork uses a comprehensive feature flag system to control all external communication features. By default, all features that communicate with external services are disabled for maximum privacy.
+
+### Configurable Features
+
+- **Auto-Updates**: Control Sparkle framework updates
+- **License Validation**: Toggle license checking
+- **Announcements**: Enable/disable in-app announcements
+- **Analytics**: Control telemetry and usage tracking
+
+All features are configured via `Fork.plist`. Copy `Fork.plist.template` to `Fork.plist` and customize as needed. See [FEATURE_FLAG_REFACTORING.md](FEATURE_FLAG_REFACTORING.md) for details.
+

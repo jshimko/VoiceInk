@@ -85,7 +85,7 @@ class AudioTranscriptionService: ObservableObject {
             
             // Create a permanent copy of the audio file
             let recordingsDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("com.prakashjoshipax.VoiceInk")
+                .appendingPathComponent("com.jshimko.VoiceInk")
                 .appendingPathComponent("Recordings")
             
             let fileName = "retranscribed_\(UUID().uuidString).wav"

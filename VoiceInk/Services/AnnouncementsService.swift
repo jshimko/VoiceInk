@@ -2,15 +2,23 @@ import Foundation
 import AppKit
 
 /// A minimal pull-based announcements fetcher that shows one-time in-app banners.
+/// This service is conditionally enabled based on the EnableAnnouncements feature flag.
 final class AnnouncementsService {
     static let shared = AnnouncementsService()
 
+    private let config = AppConfig.shared
     private init() {}
 
     // MARK: - Configuration
 
-    // Hosted via GitHub Pages for this repo
-    private let announcementsURL = URL(string: "https://beingpax.github.io/VoiceInk/announcements.json")!
+    // Use configured URL or fall back to default
+    private var announcementsURL: URL? {
+        if let urlString = config.announcementsURL, !urlString.isEmpty {
+            return URL(string: urlString)
+        }
+        // Default URL for backward compatibility
+        return URL(string: "https://beingpax.github.io/VoiceInk/announcements.json")
+    }
 
     // Fetch every 4 hours
     private let refreshInterval: TimeInterval = 4 * 60 * 60
@@ -22,6 +30,17 @@ final class AnnouncementsService {
     // MARK: - Public API
 
     func start() {
+        // Only start if feature is enabled
+        guard config.enableAnnouncements else {
+            print("Announcements service disabled via configuration")
+            return
+        }
+
+        guard let url = announcementsURL else {
+            print("Announcements service: No valid URL configured")
+            return
+        }
+
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
             self?.fetchAndMaybeShow()
@@ -40,7 +59,11 @@ final class AnnouncementsService {
     // MARK: - Core Logic
 
     private func fetchAndMaybeShow() {
-        let request = URLRequest(url: announcementsURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        // Double-check feature flag
+        guard config.enableAnnouncements else { return }
+        guard let url = announcementsURL else { return }
+
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
             guard error == nil, let data = data else { return }
@@ -100,7 +123,4 @@ private struct RemoteAnnouncement: Decodable {
         if let endAt = endAt, let end = formatter.date(from: endAt), date > end { return false }
         return true
     }
-
 }
-
-

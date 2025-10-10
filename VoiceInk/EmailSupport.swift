@@ -4,7 +4,8 @@ import AppKit
 
 struct EmailSupport {
     static func generateSupportEmailURL() -> URL? {
-        let subject = "VoiceInk Support Request"
+        let config = AppConfig.shared
+        let subject = "\(config.appName) Support Request"
         let systemInfo = SystemInfoService.shared.getSystemInfoString()
 
         let body = """
@@ -21,7 +22,7 @@ struct EmailSupport {
 
 
         ## 📋 COMMON ISSUES:
-        Check out our Common Issues page before sending an email: https://tryvoiceink.com/common-issues
+        \(config.docsURL.map { "Check our docs before sending an email: \($0)" } ?? "")
         ------------------------
 
         System Information:
@@ -29,11 +30,11 @@ struct EmailSupport {
 
 
         """
-        
+
         let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        
-        return URL(string: "mailto:prakashjoshipax@gmail.com?subject=\(encodedSubject)&body=\(encodedBody)")
+
+        return URL(string: "mailto:\(config.supportEmail)?subject=\(encodedSubject)&body=\(encodedBody)")
     }
     
     static func openSupportEmail() {

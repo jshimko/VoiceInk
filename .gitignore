@@ -102,3 +102,6 @@ Temporary Items
 
 .env
 .task
+
+# Fork configuration (users should copy Fork.plist.template to Fork.plist)
+Fork.plist

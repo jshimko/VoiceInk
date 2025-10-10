@@ -4,7 +4,8 @@ struct LicenseManagementView: View {
     @StateObject private var licenseViewModel = LicenseViewModel()
     @Environment(\.colorScheme) private var colorScheme
     let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
-    
+    private let config = AppConfig.shared
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -57,48 +58,54 @@ struct LicenseManagementView: View {
 
                 if case .licensed = licenseViewModel.licenseState {
                     HStack(spacing: 40) {
-                        Button {
-                            if let url = URL(string: "https://github.com/Beingpax/VoiceInk/releases") {
+                        if let changelogURL = config.changelogURL,
+                           let url = config.url(from: changelogURL) {
+                            Button {
                                 NSWorkspace.shared.open(url)
+                            } label: {
+                                featureItem(icon: "list.bullet.clipboard.fill", title: "Changelog", color: .blue)
                             }
-                        } label: {
-                            featureItem(icon: "list.bullet.clipboard.fill", title: "Changelog", color: .blue)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                        
-                        Button {
-                            if let url = URL(string: "https://discord.gg/xryDy57nYD") {
+
+                        if config.showCommunityLinks,
+                           let discordURL = config.discordURL,
+                           let url = config.url(from: discordURL) {
+                            Button {
                                 NSWorkspace.shared.open(url)
+                            } label: {
+                                featureItem(icon: "bubble.left.and.bubble.right.fill", title: "Community", color: .purple)
                             }
-                        } label: {
-                            featureItem(icon: "bubble.left.and.bubble.right.fill", title: "Discord", color: .purple)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                        
+
                         Button {
                             EmailSupport.openSupportEmail()
                         } label: {
                             featureItem(icon: "envelope.fill", title: "Email Support", color: .orange)
                         }
                         .buttonStyle(.plain)
-                        
-                        Button {
-                            if let url = URL(string: "https://tryvoiceink.com/docs") {
+
+                        if let docsURL = config.docsURL,
+                           let url = config.url(from: docsURL) {
+                            Button {
                                 NSWorkspace.shared.open(url)
+                            } label: {
+                                featureItem(icon: "book.fill", title: "Docs", color: .indigo)
                             }
-                        } label: {
-                            featureItem(icon: "book.fill", title: "Docs", color: .indigo)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                        
-                        Button {
-                            if let url = URL(string: "https://buymeacoffee.com/beingpax") {
+
+                        if config.showDonationLink,
+                           let donationURL = config.donationURL,
+                           let url = config.url(from: donationURL) {
+                            Button {
                                 NSWorkspace.shared.open(url)
+                            } label: {
+                                animatedTipJarItem()
                             }
-                        } label: {
-                            animatedTipJarItem()
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                     .padding(.top, 8)
                 }
@@ -124,18 +131,20 @@ struct LicenseManagementView: View {
                 .background(Color.blue.opacity(0.1))
                 .cornerRadius(12)
                 
-                // Purchase Button 
-                Button(action: {
-                    if let url = URL(string: "https://tryvoiceink.com/buy") {
+                // Purchase Button
+                if config.showPurchaseOptions,
+                   let purchaseURL = config.purchaseURL,
+                   let url = config.url(from: purchaseURL) {
+                    Button(action: {
                         NSWorkspace.shared.open(url)
+                    }) {
+                        Text("Upgrade to \(config.appName) Pro")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
                     }
-                }) {
-                    Text("Upgrade to VoiceInk Pro")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
                 
                 // Features Grid
                 HStack(spacing: 40) {
@@ -197,15 +206,16 @@ struct LicenseManagementView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Button(action: {
-                        if let url = URL(string: "https://polar.sh/beingpax/portal/request") {
+                    if let licensePortalURL = config.licensePortalURL,
+                       let url = config.url(from: licensePortalURL) {
+                        Button(action: {
                             NSWorkspace.shared.open(url)
+                        }) {
+                            Text("License Management Portal")
+                                .frame(width: 180)
                         }
-                    }) {
-                        Text("License Management Portal")
-                            .frame(width: 180)
+                        .buttonStyle(.borderedProminent)
                     }
-                    .buttonStyle(.borderedProminent)
                 }
             }
             .padding(32)

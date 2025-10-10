@@ -29,7 +29,7 @@ struct ConfigurationView: View {
     @State private var selectedAIModel: String?
     
     // App and Website configurations
-    @State private var selectedAppConfigs: [AppConfig] = []
+    @State private var selectedAppConfigs: [PowerModeAppConfig] = []
     @State private var websiteConfigs: [URLConfig] = []
     @State private var newWebsiteURL: String = ""
     
@@ -686,7 +686,7 @@ struct ConfigurationView: View {
         if let index = selectedAppConfigs.firstIndex(where: { $0.bundleIdentifier == app.bundleId }) {
             selectedAppConfigs.remove(at: index)
         } else {
-            let appConfig = AppConfig(bundleIdentifier: app.bundleId, appName: app.name)
+            let appConfig = PowerModeAppConfig(bundleIdentifier: app.bundleId, appName: app.name)
             selectedAppConfigs.append(appConfig)
         }
     }

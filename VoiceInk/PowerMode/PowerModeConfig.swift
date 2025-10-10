@@ -4,7 +4,7 @@ struct PowerModeConfig: Codable, Identifiable, Equatable {
     var id: UUID
     var name: String
     var emoji: String
-    var appConfigs: [AppConfig]?
+    var appConfigs: [PowerModeAppConfig]?
     var urlConfigs: [URLConfig]?
     var isAIEnhancementEnabled: Bool
     var selectedPrompt: String?
@@ -23,7 +23,7 @@ struct PowerModeConfig: Codable, Identifiable, Equatable {
         case selectedTranscriptionModelName
     }
     
-    init(id: UUID = UUID(), name: String, emoji: String, appConfigs: [AppConfig]? = nil,
+    init(id: UUID = UUID(), name: String, emoji: String, appConfigs: [PowerModeAppConfig]? = nil,
          urlConfigs: [URLConfig]? = nil, isAIEnhancementEnabled: Bool, selectedPrompt: String? = nil,
          selectedTranscriptionModelName: String? = nil, selectedLanguage: String? = nil, useScreenCapture: Bool = false,
          selectedAIProvider: String? = nil, selectedAIModel: String? = nil, isAutoSendEnabled: Bool = false, isEnabled: Bool = true, isDefault: Bool = false) {
@@ -49,7 +49,7 @@ struct PowerModeConfig: Codable, Identifiable, Equatable {
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         emoji = try container.decode(String.self, forKey: .emoji)
-        appConfigs = try container.decodeIfPresent([AppConfig].self, forKey: .appConfigs)
+        appConfigs = try container.decodeIfPresent([PowerModeAppConfig].self, forKey: .appConfigs)
         urlConfigs = try container.decodeIfPresent([URLConfig].self, forKey: .urlConfigs)
         isAIEnhancementEnabled = try container.decode(Bool.self, forKey: .isAIEnhancementEnabled)
         selectedPrompt = try container.decodeIfPresent(String.self, forKey: .selectedPrompt)
@@ -95,18 +95,18 @@ struct PowerModeConfig: Codable, Identifiable, Equatable {
     }
 }
 
-struct AppConfig: Codable, Identifiable, Equatable {
+struct PowerModeAppConfig: Codable, Identifiable, Equatable {
     let id: UUID
     var bundleIdentifier: String
     var appName: String
-    
+
     init(id: UUID = UUID(), bundleIdentifier: String, appName: String) {
         self.id = id
         self.bundleIdentifier = bundleIdentifier
         self.appName = appName
     }
-    
-    static func == (lhs: AppConfig, rhs: AppConfig) -> Bool {
+
+    static func == (lhs: PowerModeAppConfig, rhs: PowerModeAppConfig) -> Bool {
         lhs.id == rhs.id
     }
 }
@@ -253,7 +253,7 @@ class PowerModeManager: ObservableObject {
         return configurations.filter { $0.isEnabled }
     }
 
-    func addAppConfig(_ appConfig: AppConfig, to config: PowerModeConfig) {
+    func addAppConfig(_ appConfig: PowerModeAppConfig, to config: PowerModeConfig) {
         if var updatedConfig = configurations.first(where: { $0.id == config.id }) {
             var configs = updatedConfig.appConfigs ?? []
             configs.append(appConfig)
@@ -262,7 +262,7 @@ class PowerModeManager: ObservableObject {
         }
     }
 
-    func removeAppConfig(_ appConfig: AppConfig, from config: PowerModeConfig) {
+    func removeAppConfig(_ appConfig: PowerModeAppConfig, from config: PowerModeConfig) {
         if var updatedConfig = configurations.first(where: { $0.id == config.id }) {
             updatedConfig.appConfigs?.removeAll(where: { $0.id == appConfig.id })
             updateConfiguration(updatedConfig)

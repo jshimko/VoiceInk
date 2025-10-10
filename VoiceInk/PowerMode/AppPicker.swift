@@ -3,7 +3,7 @@ import SwiftUI
 // App Picker Sheet
 struct AppPickerSheet: View {
     let installedApps: [(url: URL, name: String, bundleId: String, icon: NSImage)]
-    @Binding var selectedAppConfigs: [AppConfig]
+    @Binding var selectedAppConfigs: [PowerModeAppConfig]
     @Binding var searchText: String
     let onDismiss: () -> Void
     
@@ -63,7 +63,7 @@ struct AppPickerSheet: View {
         if let index = selectedAppConfigs.firstIndex(where: { $0.bundleIdentifier == app.bundleId }) {
             selectedAppConfigs.remove(at: index)
         } else {
-            let appConfig = AppConfig(bundleIdentifier: app.bundleId, appName: app.name)
+            let appConfig = PowerModeAppConfig(bundleIdentifier: app.bundleId, appName: app.name)
             selectedAppConfigs.append(appConfig)
         }
     }
