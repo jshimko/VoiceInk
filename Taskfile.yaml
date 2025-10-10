@@ -1,0 +1,723 @@
+# Taskfile.yaml - Unified Build System Interface for VoiceInk
+# This Taskfile provides a comprehensive command interface for building, testing,
+# and releasing the VoiceInk macOS application.
+#
+# Documentation: https://taskfile.dev
+# Last Updated: 2025-10-10
+#
+# Quick Start:
+#   task --list          # Show all available tasks
+#   task setup          # Complete project setup
+#   task build          # Build debug version
+#   task test           # Run all tests
+#   task release        # Create release build
+
+version: "3"
+
+# Global Variables
+vars:
+  # Project configuration
+  PROJECT_NAME: VoiceInk
+  PROJECT_FILE: VoiceInk.xcodeproj
+  SCHEME: VoiceInk
+
+  # Directory paths
+  SCRIPTS_DIR: ./scripts
+  BUILD_DIR: ./build
+  DERIVED_DATA: ./build
+  WHISPER_DIR: ../whisper.cpp
+  SOURCE_DIR: ./VoiceInk
+  TESTS_DIR: ./VoiceInkTests
+  UI_TESTS_DIR: ./VoiceInkUITests
+  DOCS_DIR: ./docs
+
+  # Build settings
+  DEFAULT_CONFIG: Debug
+  DEFAULT_ARCH: current
+
+  # Colors for output (using tput for compatibility)
+  RED: "\\033[0;31m"
+  GREEN: "\\033[0;32m"
+  YELLOW: "\\033[1;33m"
+  BLUE: "\\033[0;34m"
+  CYAN: "\\033[0;36m"
+  NC: "\\033[0m"
+
+# Environment configuration
+env:
+  # Ensure scripts can find the correct paths
+  PROJECT_ROOT:
+    sh: pwd
+
+# Task output settings
+output: prefixed
+interval: 100ms
+
+# Main Tasks
+tasks:
+  # ============================================================================
+  # Default Task
+  # ============================================================================
+
+  default:
+    desc: Show available tasks
+    cmds:
+      - task: help
+
+  help:
+    desc: Display help and usage information
+    silent: true
+    cmds:
+      - |
+        echo "{{.CYAN}}╔════════════════════════════════════════════════════════════╗{{.NC}}"
+        echo "{{.CYAN}}║            VoiceInk Build System (Task)                   ║{{.NC}}"
+        echo "{{.CYAN}}╚════════════════════════════════════════════════════════════╝{{.NC}}"
+        echo ""
+        echo "{{.BLUE}}📋 Common Commands:{{.NC}}"
+        echo "  {{.GREEN}}task setup{{.NC}}          - Complete project setup"
+        echo "  {{.GREEN}}task build{{.NC}}          - Build debug version"
+        echo "  {{.GREEN}}task test{{.NC}}           - Run all tests"
+        echo "  {{.GREEN}}task clean{{.NC}}          - Clean build artifacts"
+        echo "  {{.GREEN}}task release{{.NC}}        - Create release build"
+        echo ""
+        echo "{{.BLUE}}📚 Documentation:{{.NC}}"
+        echo "  {{.GREEN}}task --list{{.NC}}         - Show all available tasks"
+        echo "  {{.GREEN}}task --list-all{{.NC}}     - Show tasks with namespaces"
+        echo "  {{.GREEN}}task <name> --summary{{.NC}} - Show detailed task info"
+        echo ""
+        echo "{{.BLUE}}🔍 Examples:{{.NC}}"
+        echo "  {{.GREEN}}task build:release{{.NC}}  - Build release configuration"
+        echo "  {{.GREEN}}task test:unit{{.NC}}      - Run unit tests only"
+        echo "  {{.GREEN}}task clean:deep{{.NC}}     - Deep clean including caches"
+        echo ""
+        echo "{{.YELLOW}}💡 Tip:{{.NC}} Use 'task --list-all' to see all available commands"
+
+  # ============================================================================
+  # Environment & Setup Tasks
+  # ============================================================================
+
+  check:
+    desc: Validate development environment
+    summary: |
+      Checks that all required tools and dependencies are installed:
+        - Xcode and command line tools
+        - Required macOS version
+        - Git configuration
+        - Optional tools (xcpretty, swiftlint)
+
+      This task is automatically run before setup tasks.
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/setup-environment.sh"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/setup-environment.sh
+        msg: "setup-environment.sh script not found"
+
+  setup:
+    desc: Complete project setup (recommended for first-time setup)
+    summary: |
+      Performs complete project setup including:
+        1. Environment validation
+        2. Whisper.cpp framework build
+        3. Project dependencies installation
+        4. Xcode project configuration
+
+      This is the recommended task for initial project setup.
+
+      For specific setup tasks, use:
+        - task setup:env     - Check environment only
+        - task setup:whisper - Build whisper framework only
+    cmds:
+      - task: setup:env
+      - task: setup:project
+
+  setup:env:
+    desc: Check and validate environment prerequisites
+    summary: |
+      Validates the development environment without making changes.
+      Checks for required tools and correct versions.
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/setup-environment.sh"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/setup-environment.sh
+        msg: "Environment setup script not found"
+
+  setup:whisper:
+    desc: Build whisper.cpp framework
+    summary: |
+      Builds the whisper.cpp framework required for local transcription.
+      This task clones or updates the whisper.cpp repository and builds
+      the xcframework for all Apple platforms.
+
+      The framework will be built at: {{.WHISPER_DIR}}/build-apple/
+    deps: [setup:env]
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/build-whisper.sh"
+        ignore_error: false
+    sources:
+      - "{{.WHISPER_DIR}}/**/*.cpp"
+      - "{{.WHISPER_DIR}}/**/*.h"
+      - "{{.WHISPER_DIR}}/**/*.m"
+      - "{{.WHISPER_DIR}}/**/*.metal"
+    generates:
+      - "{{.WHISPER_DIR}}/build-apple/whisper.xcframework/**/*"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/build-whisper.sh
+        msg: "Whisper build script not found"
+
+  setup:project:
+    desc: Run complete project setup
+    summary: |
+      Runs the complete project setup including:
+        - Environment verification
+        - Whisper.cpp framework build
+        - Xcode project configuration
+        - Dependencies installation
+    deps: [setup:env]
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/setup-project.sh"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/setup-project.sh
+        msg: "Project setup script not found"
+
+  # ============================================================================
+  # Build Tasks
+  # ============================================================================
+
+  build:
+    desc: Build VoiceInk (debug configuration)
+    summary: |
+      Builds VoiceInk in debug configuration.
+      This is the default build task for development.
+
+      For other configurations, use:
+        - task build:release   - Build release version
+        - task build:universal - Build universal binary
+        - task build:clean     - Clean and rebuild
+        - task build:open      - Build and open in Finder
+    cmds:
+      - task: build:debug
+
+  build:debug:
+    desc: Build debug configuration
+    summary: |
+      Builds VoiceInk in debug configuration with debugging symbols.
+      Optimized for development and debugging.
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/build-app.sh --configuration Debug"
+        ignore_error: false
+    sources:
+      - "{{.SOURCE_DIR}}/**/*.swift"
+      - "{{.SOURCE_DIR}}/**/*.xcassets"
+      - "{{.PROJECT_FILE}}/**/*"
+    generates:
+      - "{{.BUILD_DIR}}/Build/Products/Debug/{{.PROJECT_NAME}}.app/**/*"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/build-app.sh
+        msg: "Build script not found"
+      - sh: test -d {{.PROJECT_FILE}}
+        msg: "Xcode project not found"
+
+  build:release:
+    desc: Build release configuration
+    summary: |
+      Builds VoiceInk in release configuration with optimizations.
+      This configuration is suitable for distribution but not notarized.
+
+      For a notarized release, use: task release:notarize
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/build-app.sh --configuration Release"
+        ignore_error: false
+    sources:
+      - "{{.SOURCE_DIR}}/**/*.swift"
+      - "{{.SOURCE_DIR}}/**/*.xcassets"
+      - "{{.PROJECT_FILE}}/**/*"
+    generates:
+      - "{{.BUILD_DIR}}/Build/Products/Release/{{.PROJECT_NAME}}.app/**/*"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/build-app.sh
+        msg: "Build script not found"
+
+  build:clean:
+    desc: Clean and rebuild (debug)
+    summary: |
+      Performs a clean build by removing all build artifacts
+      and rebuilding from scratch in debug configuration.
+    cmds:
+      - task: clean
+      - task: build:debug
+
+  build:universal:
+    desc: Build universal binary (Intel + Apple Silicon)
+    summary: |
+      Builds a universal binary that runs natively on both
+      Intel and Apple Silicon Macs.
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/build-app.sh --configuration Release --arch universal"
+        ignore_error: false
+    sources:
+      - "{{.SOURCE_DIR}}/**/*.swift"
+      - "{{.PROJECT_FILE}}/**/*"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/build-app.sh
+        msg: "Build script not found"
+
+  build:open:
+    desc: Build and reveal in Finder
+    summary: |
+      Builds the app in debug configuration and opens the
+      build location in Finder.
+    cmds:
+      - task: build:debug
+      - cmd: open "{{.BUILD_DIR}}/Build/Products/Debug/"
+
+  # ============================================================================
+  # Test Tasks
+  # ============================================================================
+
+  test:
+    desc: Run all tests
+    summary: |
+      Runs all unit and UI tests with code coverage enabled.
+
+      For specific test types, use:
+        - task test:unit     - Run unit tests only
+        - task test:ui       - Run UI tests only
+        - task test:coverage - Generate coverage report
+        - task test:filter   - Run specific tests
+
+      Example:
+        task test:filter -- --filter WhisperState
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/run-tests.sh --type all"
+        ignore_error: false
+    sources:
+      - "{{.SOURCE_DIR}}/**/*.swift"
+      - "{{.TESTS_DIR}}/**/*.swift"
+      - "{{.UI_TESTS_DIR}}/**/*.swift"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/run-tests.sh
+        msg: "Test script not found"
+
+  test:unit:
+    desc: Run unit tests only
+    summary: |
+      Runs unit tests only, excluding UI tests.
+      Faster than running all tests.
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/run-tests.sh --type unit"
+        ignore_error: false
+    sources:
+      - "{{.SOURCE_DIR}}/**/*.swift"
+      - "{{.TESTS_DIR}}/**/*.swift"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/run-tests.sh
+        msg: "Test script not found"
+
+  test:ui:
+    desc: Run UI tests only
+    summary: |
+      Runs UI tests only, excluding unit tests.
+      Note: UI tests require the app to be built first.
+    deps: [build:debug]
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/run-tests.sh --type ui"
+        ignore_error: false
+    sources:
+      - "{{.UI_TESTS_DIR}}/**/*.swift"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/run-tests.sh
+        msg: "Test script not found"
+
+  test:coverage:
+    desc: Run tests with coverage report
+    summary: |
+      Runs all tests and generates an HTML coverage report.
+      The report will be opened in your default browser.
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/run-tests.sh --type all --coverage-report"
+        ignore_error: false
+    sources:
+      - "{{.SOURCE_DIR}}/**/*.swift"
+      - "{{.TESTS_DIR}}/**/*.swift"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/run-tests.sh
+        msg: "Test script not found"
+
+  test:filter:
+    desc: Run tests matching a pattern
+    summary: |
+      Runs only tests matching the specified pattern.
+
+      Usage:
+        task test:filter -- --filter <pattern>
+
+      Examples:
+        task test:filter -- --filter WhisperState
+        task test:filter -- --filter "AI.*Service"
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/run-tests.sh {{.CLI_ARGS}}"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/run-tests.sh
+        msg: "Test script not found"
+
+  test:watch:
+    desc: Run tests in watch mode (requires entr)
+    summary: |
+      Watches for file changes and automatically reruns tests.
+      Requires 'entr' to be installed: brew install entr
+    cmds:
+      - cmd: |
+          if ! command -v entr &> /dev/null; then
+            echo "{{.RED}}entr is not installed. Install with: brew install entr{{.NC}}"
+            exit 1
+          fi
+          find {{.SOURCE_DIR}} {{.TESTS_DIR}} -name "*.swift" | entr -c task test:unit
+    preconditions:
+      - sh: command -v entr
+        msg: "entr is not installed. Install with: brew install entr"
+
+  # ============================================================================
+  # Clean Tasks
+  # ============================================================================
+
+  clean:
+    desc: Clean build artifacts (normal)
+    summary: |
+      Removes build artifacts and derived data.
+      This is the standard clean operation.
+
+      For more thorough cleaning:
+        - task clean:deep - Also cleans module cache
+        - task clean:full - Complete Xcode cache cleanup
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/clean-build.sh --level normal"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/clean-build.sh
+        msg: "Clean script not found"
+
+  clean:deep:
+    desc: Deep clean including caches
+    summary: |
+      Performs a deep clean including:
+        - Build artifacts
+        - Derived data
+        - Module cache
+        - Swift Package Manager cache
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/clean-build.sh --level deep"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/clean-build.sh
+        msg: "Clean script not found"
+
+  clean:full:
+    desc: Full clean including all Xcode caches
+    summary: |
+      Performs a complete clean including:
+        - All items from deep clean
+        - Xcode derived data (global)
+        - Simulator caches
+        - Documentation caches
+
+      Warning: This may increase next build time significantly.
+    cmds:
+      - cmd: |
+          echo "{{.YELLOW}}⚠️  This will clean all Xcode caches globally{{.NC}}"
+          echo "{{.YELLOW}}   Next build will take significantly longer{{.NC}}"
+          read -p "Continue? (y/N) " -n 1 -r
+          echo
+          if [[ $REPLY =~ ^[Yy]$ ]]; then
+            {{.SCRIPTS_DIR}}/clean-build.sh --level full
+          else
+            echo "{{.CYAN}}Cancelled{{.NC}}"
+          fi
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/clean-build.sh
+        msg: "Clean script not found"
+
+  clean:whisper:
+    desc: Clean whisper.cpp build artifacts
+    summary: |
+      Removes whisper.cpp build artifacts.
+      The framework will need to be rebuilt with: task setup:whisper
+    cmds:
+      - cmd: rm -rf {{.WHISPER_DIR}}/build-apple
+      - cmd: echo "{{.GREEN}}✓ Whisper.cpp build artifacts cleaned{{.NC}}"
+
+  # ============================================================================
+  # Release Tasks
+  # ============================================================================
+
+  release:
+    desc: Create release build
+    summary: |
+      Creates a release build ready for distribution.
+
+      For additional release options:
+        - task release:dmg      - Create DMG installer
+        - task release:notarize - Submit for notarization
+
+      Note: Release builds require code signing configuration.
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/create-release.sh"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/create-release.sh
+        msg: "Release script not found"
+
+  release:dmg:
+    desc: Create release with DMG installer
+    summary: |
+      Creates a release build and packages it as a DMG installer.
+      The DMG will include the app and a symbolic link to Applications.
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/create-release.sh --dmg"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/create-release.sh
+        msg: "Release script not found"
+
+  release:notarize:
+    desc: Create notarized release (requires Apple credentials)
+    summary: |
+      Creates a release build and submits it for Apple notarization.
+
+      Requirements:
+        - Apple Developer account
+        - App-specific password
+        - Developer Team ID
+
+      The script will prompt for credentials if not provided.
+
+      For automated builds, set environment variables:
+        - APPLE_ID
+        - APPLE_PASSWORD (app-specific password)
+        - TEAM_ID
+    interactive: true
+    cmds:
+      - cmd: |
+          echo "{{.CYAN}}📝 Notarization requires Apple Developer credentials{{.NC}}"
+          echo ""
+          if [ -z "$APPLE_ID" ]; then
+            read -p "Apple ID (email): " APPLE_ID
+            export APPLE_ID
+          fi
+          if [ -z "$APPLE_PASSWORD" ]; then
+            read -s -p "App-specific password: " APPLE_PASSWORD
+            echo
+            export APPLE_PASSWORD
+          fi
+          if [ -z "$TEAM_ID" ]; then
+            read -p "Team ID: " TEAM_ID
+            export TEAM_ID
+          fi
+          {{.SCRIPTS_DIR}}/create-release.sh --notarize --dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$TEAM_ID"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/create-release.sh
+        msg: "Release script not found"
+
+  release:version:
+    desc: Set version and build number
+    summary: |
+      Updates the app version and build number.
+
+      Usage:
+        task release:version -- VERSION=1.2.3 BUILD=45
+    interactive: true
+    cmds:
+      - cmd: |
+          if [ -z "{{.VERSION}}" ]; then
+            read -p "Version number (e.g., 1.2.3): " VERSION
+          else
+            VERSION="{{.VERSION}}"
+          fi
+          if [ -z "{{.BUILD}}" ]; then
+            read -p "Build number (e.g., 45): " BUILD
+          else
+            BUILD="{{.BUILD}}"
+          fi
+          {{.SCRIPTS_DIR}}/create-release.sh --version "$VERSION" --build "$BUILD"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/create-release.sh
+        msg: "Release script not found"
+
+  # ============================================================================
+  # Development Utility Tasks
+  # ============================================================================
+
+  dev:
+    desc: Open project in Xcode
+    summary: |
+      Opens the VoiceInk project in Xcode.
+    cmds:
+      - cmd: open {{.PROJECT_FILE}}
+    preconditions:
+      - sh: test -d {{.PROJECT_FILE}}
+        msg: "Xcode project not found"
+
+  run:
+    desc: Build and run the app
+    summary: |
+      Builds the app in debug configuration and launches it.
+    deps: [build:debug]
+    cmds:
+      - cmd: open "{{.BUILD_DIR}}/Build/Products/Debug/{{.PROJECT_NAME}}.app"
+    preconditions:
+      - sh: test -d "{{.BUILD_DIR}}/Build/Products/Debug/{{.PROJECT_NAME}}.app"
+        msg: "App not built. Run 'task build' first"
+
+  docs:
+    desc: Open project documentation
+    summary: |
+      Opens the build documentation in your default markdown viewer.
+    cmds:
+      - cmd: open {{.DOCS_DIR}}/build.md
+    preconditions:
+      - sh: test -f {{.DOCS_DIR}}/build.md
+        msg: "Documentation not found"
+
+  docs:serve:
+    desc: Serve documentation locally (requires Python)
+    summary: |
+      Starts a local web server to view documentation.
+      Requires Python 3 to be installed.
+    cmds:
+      - cmd: |
+          echo "{{.CYAN}}📚 Serving documentation at http://localhost:8000{{.NC}}"
+          echo "{{.YELLOW}}Press Ctrl+C to stop{{.NC}}"
+          cd {{.DOCS_DIR}} && python3 -m http.server 8000
+    preconditions:
+      - sh: command -v python3
+        msg: "Python 3 is required to serve documentation"
+
+  # ============================================================================
+  # CI/CD Tasks
+  # ============================================================================
+
+  ci:
+    desc: Run continuous integration checks
+    summary: |
+      Runs all checks required for continuous integration:
+        1. Environment validation
+        2. Build (debug and release)
+        3. All tests with coverage
+        4. Linting (if configured)
+
+      This task is suitable for CI/CD pipelines.
+    cmds:
+      - task: check
+      - task: clean
+      - task: build:debug
+      - task: build:release
+      - task: test:coverage
+      - cmd: echo "{{.GREEN}}✅ All CI checks passed{{.NC}}"
+
+  ci:quick:
+    desc: Quick CI checks (faster)
+    summary: |
+      Runs essential CI checks:
+        - Build (debug only)
+        - Unit tests only
+
+      Suitable for pull request checks.
+    cmds:
+      - task: check
+      - task: build:debug
+      - task: test:unit
+      - cmd: echo "{{.GREEN}}✅ Quick CI checks passed{{.NC}}"
+
+  # ============================================================================
+  # Diagnostic Tasks
+  # ============================================================================
+
+  doctor:
+    desc: Diagnose common issues
+    summary: |
+      Checks for common development environment issues:
+        - Xcode installation and version
+        - Command line tools
+        - Git configuration
+        - Whisper.cpp framework
+        - Code signing setup
+    cmds:
+      - cmd: |
+          echo "{{.CYAN}}🔍 Running diagnostics...{{.NC}}"
+          echo ""
+
+          # Check Xcode
+          if xcodebuild -version &>/dev/null; then
+            echo "{{.GREEN}}✓ Xcode:{{.NC}} $(xcodebuild -version | head -1)"
+          else
+            echo "{{.RED}}✗ Xcode not found{{.NC}}"
+          fi
+
+          # Check Command Line Tools
+          if xcode-select -p &>/dev/null; then
+            echo "{{.GREEN}}✓ Command Line Tools:{{.NC}} $(xcode-select -p)"
+          else
+            echo "{{.RED}}✗ Command Line Tools not installed{{.NC}}"
+          fi
+
+          # Check Git
+          if git --version &>/dev/null; then
+            echo "{{.GREEN}}✓ Git:{{.NC}} $(git --version)"
+          else
+            echo "{{.RED}}✗ Git not found{{.NC}}"
+          fi
+
+          # Check Whisper framework
+          if [ -d "{{.WHISPER_DIR}}/build-apple/whisper.xcframework" ]; then
+            echo "{{.GREEN}}✓ Whisper.xcframework found{{.NC}}"
+          else
+            echo "{{.YELLOW}}⚠ Whisper.xcframework not built (run: task setup:whisper){{.NC}}"
+          fi
+
+          # Check code signing
+          if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
+            echo "{{.GREEN}}✓ Code signing certificates found{{.NC}}"
+          else
+            echo "{{.YELLOW}}⚠ No code signing certificates found{{.NC}}"
+          fi
+
+          echo ""
+          echo "{{.CYAN}}Diagnostic complete{{.NC}}"
+
+  info:
+    desc: Show project information
+    summary: |
+      Displays project configuration and paths.
+    silent: true
+    cmds:
+      - |
+        echo "{{.CYAN}}╔════════════════════════════════════════════════════════════╗{{.NC}}"
+        echo "{{.CYAN}}║                   VoiceInk Project Info                   ║{{.NC}}"
+        echo "{{.CYAN}}╚════════════════════════════════════════════════════════════╝{{.NC}}"
+        echo ""
+        echo "{{.BLUE}}📁 Paths:{{.NC}}"
+        echo "  Project Root:  $(pwd)"
+        echo "  Project File:  {{.PROJECT_FILE}}"
+        echo "  Scripts:       {{.SCRIPTS_DIR}}"
+        echo "  Build Output:  {{.BUILD_DIR}}"
+        echo "  Whisper:       {{.WHISPER_DIR}}"
+        echo ""
+        echo "{{.BLUE}}🔧 Configuration:{{.NC}}"
+        echo "  Scheme:        {{.SCHEME}}"
+        echo "  Default Build: {{.DEFAULT_CONFIG}}"
+        echo ""
+        echo "{{.BLUE}}📊 Statistics:{{.NC}}"
+        echo "  Swift Files:   $(find {{.SOURCE_DIR}} -name '*.swift' | wc -l | tr -d ' ')"
+        echo "  Test Files:    $(find {{.TESTS_DIR}} {{.UI_TESTS_DIR}} -name '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
+        echo ""
+        if [ -d ".git" ]; then
+          echo "{{.BLUE}}📝 Git Info:{{.NC}}"
+          echo "  Branch:        $(git branch --show-current)"
+          echo "  Last Commit:   $(git log -1 --format='%h %s')"
+        fi
