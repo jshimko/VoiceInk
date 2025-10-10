@@ -79,7 +79,8 @@ setup_whisper_cpp() {
     # Check if framework is already built
     if [ -d "$FRAMEWORK_PATH" ]; then
         print_success "whisper.xcframework already built"
-        read -p "Do you want to rebuild the framework? (y/N): " -n 1 -r
+        printf "Do you want to rebuild the framework? (y/N): "
+        read -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             "${SCRIPT_DIR}/build-whisper.sh"
@@ -195,7 +196,8 @@ EOF
 run_initial_build() {
     show_progress 7 7 "Running initial build test..."
 
-    read -p "Do you want to run a test build now? (Y/n): " -n 1 -r
+    printf "Do you want to run a test build now? (Y/n): "
+    read -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         print_status "Running test build..."
@@ -283,7 +285,8 @@ main() {
     echo "  7. Run a test build (optional)"
     echo ""
 
-    read -p "Continue with setup? (Y/n): " -n 1 -r
+    printf "Continue with setup? (Y/n): "
+    read -n 1 -r
     echo
     if [[ $REPLY =~ ^[Nn]$ ]]; then
         echo "Setup cancelled"

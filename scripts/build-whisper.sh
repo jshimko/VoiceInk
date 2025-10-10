@@ -19,7 +19,7 @@ FRAMEWORK_OUTPUT="${WHISPER_DIR}/build-apple/whisper.xcframework"
 
 # Helper functions
 print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${NC} $1"
 }
 
 print_success() {
@@ -67,7 +67,8 @@ clone_whisper_cpp() {
         print_success "whisper.cpp repository found at $WHISPER_DIR"
 
         # Ask if user wants to update
-        read -p "Do you want to update whisper.cpp to the latest version? (y/N): " -n 1 -r
+        printf "Do you want to update whisper.cpp to the latest version? (y/N): "
+        read -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             print_status "Updating whisper.cpp..."
@@ -99,7 +100,8 @@ check_build_script() {
 
 clean_previous_build() {
     if [ -d "${WHISPER_DIR}/build-apple" ]; then
-        read -p "Do you want to clean the previous build? (y/N): " -n 1 -r
+        printf "Do you want to clean the previous build? (y/N): "
+        read -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             print_status "Cleaning previous build..."

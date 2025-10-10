@@ -121,6 +121,7 @@ tasks:
 
   setup:
     desc: Complete project setup (recommended for first-time setup)
+    interactive: true
     summary: |
       Performs complete project setup including:
         1. Environment validation
@@ -151,6 +152,7 @@ tasks:
 
   setup:whisper:
     desc: Build whisper.cpp framework
+    interactive: true
     summary: |
       Builds the whisper.cpp framework required for local transcription.
       This task clones or updates the whisper.cpp repository and builds
@@ -174,6 +176,7 @@ tasks:
 
   setup:project:
     desc: Run complete project setup
+    interactive: true
     summary: |
       Runs the complete project setup including:
         - Environment verification

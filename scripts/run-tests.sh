@@ -32,7 +32,7 @@ VERBOSE=false
 
 # Helper functions
 print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${NC} $1"
 }
 
 print_success() {
