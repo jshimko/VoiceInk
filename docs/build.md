@@ -58,7 +58,7 @@
 3. **CMake** (Required for building whisper.cpp)
 
    ```bash
-   # Install using Homebrew (optional but recommended)
+   # Install using Homebrew
    brew install cmake
 
    # Or download from https://cmake.org/download/
