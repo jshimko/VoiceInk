@@ -105,14 +105,14 @@
 
 The following dependencies are automatically resolved by Xcode:
 
-| Package                | Repository                                           | Version | Purpose                  |
-| ---------------------- | ---------------------------------------------------- | ------- | ------------------------ |
-| **KeyboardShortcuts**  | https://github.com/sindresorhus/KeyboardShortcuts    | 2.3.0   | Global hotkey management |
-| **Sparkle**            | https://github.com/sparkle-project/Sparkle           | 2.7.1   | Auto-update framework    |
-| **LaunchAtLogin**      | https://github.com/sindresorhus/LaunchAtLogin-Modern | main    | Startup management       |
-| **FluidAudio**         | https://github.com/FluidInference/FluidAudio         | main    | Parakeet model support   |
-| **MediaRemoteAdapter** | https://github.com/ejbills/mediaremote-adapter       | master  | Media playback control   |
-| **Zip**                | https://github.com/marmelroy/Zip                     | 2.1.2   | Archive handling         |
+| Package                | Repository                                           | Purpose                  |
+| ---------------------- | ---------------------------------------------------- | ------------------------ |
+| **KeyboardShortcuts**  | https://github.com/sindresorhus/KeyboardShortcuts    | Global hotkey management |
+| **Sparkle**            | https://github.com/sparkle-project/Sparkle           | Auto-update framework    |
+| **LaunchAtLogin**      | https://github.com/sindresorhus/LaunchAtLogin-Modern | Startup management       |
+| **FluidAudio**         | https://github.com/FluidInference/FluidAudio         | Parakeet model support   |
+| **MediaRemoteAdapter** | https://github.com/ejbills/mediaremote-adapter       | Media playback control   |
+| **Zip**                | https://github.com/marmelroy/Zip                     | Archive handling         |
 
 ### Updating Dependencies
 
