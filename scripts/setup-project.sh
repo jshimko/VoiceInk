@@ -21,7 +21,7 @@ VOICEINK_REPO="https://github.com/Beingpax/VoiceInk.git"
 
 # Helper functions
 print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${NC} $1"
 }
 
 print_success() {
@@ -127,15 +127,6 @@ resolve_swift_packages() {
                   -clonedSourcePackagesDirPath "${PROJECT_ROOT}/.build" \
                   2>&1 | grep -v "note:" > /dev/null; then
         print_success "Swift packages resolved successfully"
-
-        # List resolved packages
-        echo "Resolved packages:"
-        echo "  - KeyboardShortcuts (2.3.0)"
-        echo "  - Sparkle (2.7.1)"
-        echo "  - LaunchAtLogin (main)"
-        echo "  - FluidAudio (main)"
-        echo "  - MediaRemoteAdapter (master)"
-        echo "  - Zip (2.1.2)"
     else
         print_warning "Package resolution had warnings or errors"
         echo "Xcode will attempt to resolve packages when you open the project"
