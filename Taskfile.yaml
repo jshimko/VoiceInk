@@ -558,6 +558,48 @@ tasks:
       - sh: test -f {{.SCRIPTS_DIR}}/create-release.sh
         msg: "Release script not found"
 
+  install:
+    desc: Build and install VoiceInk to /Applications
+    summary: |
+      Builds VoiceInk in release configuration and installs it to /Applications.
+      If VoiceInk already exists in /Applications, you'll be prompted to confirm
+      before overwriting.
+
+      This is useful for testing production builds locally without notarization.
+    interactive: true
+    deps: [build:release]
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/install.sh"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/install.sh
+        msg: "Install script not found"
+
+  release:install:
+    desc: Alias for 'install' - Build and install locally
+    summary: |
+      Alias for the 'install' task. Builds and installs VoiceInk to /Applications.
+
+      See: task install --summary
+    cmds:
+      - task: install
+
+  install:quick:
+    desc: Install existing release build to /Applications (no rebuild)
+    summary: |
+      Installs an existing release build to /Applications without rebuilding.
+      Use this when you've already built the release and just want to install it.
+
+      If VoiceInk already exists in /Applications, you'll be prompted to confirm
+      before overwriting.
+    interactive: true
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/install.sh --skip-build"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/install.sh
+        msg: "Install script not found"
+
   # ============================================================================
   # Development Utility Tasks
   # ============================================================================
