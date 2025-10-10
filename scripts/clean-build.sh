@@ -185,11 +185,11 @@ clean_build_artifacts() {
     remove_file "${PROJECT_ROOT}/test.log" "test log"
 
     # Local config files (optional)
-    if [ -f "${PROJECT_ROOT}/.build-config" ]; then
+    if [ -f "${PROJECT_ROOT}/.env" ]; then
         read -p "Remove local build configuration? (y/N): " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            remove_file "${PROJECT_ROOT}/.build-config" "local build config"
+            remove_file "${PROJECT_ROOT}/.env" "local build config"
         fi
     fi
 }

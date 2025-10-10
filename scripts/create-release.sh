@@ -91,8 +91,8 @@ load_environment() {
     APP_PASSWORD="${APP_PASSWORD:-$VOICEINK_APP_PASSWORD}"
 
     # Load from local config if exists
-    if [ -f "${PROJECT_ROOT}/.build-config" ]; then
-        source "${PROJECT_ROOT}/.build-config"
+    if [ -f "${PROJECT_ROOT}/.env" ]; then
+        source "${PROJECT_ROOT}/.env"
     fi
 }
 

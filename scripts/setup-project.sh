@@ -172,7 +172,7 @@ create_local_config() {
     show_progress 6 7 "Creating local configuration..."
 
     # Create a local config file for build settings (optional)
-    LOCAL_CONFIG="${PROJECT_ROOT}/.build-config"
+    LOCAL_CONFIG="${PROJECT_ROOT}/.env"
 
     if [ ! -f "$LOCAL_CONFIG" ]; then
         print_status "Creating local build configuration..."
@@ -192,17 +192,17 @@ DEVELOPMENT_TEAM=""
 # Paths
 WHISPER_FRAMEWORK_PATH="${FRAMEWORK_PATH}"
 EOF
-        print_success "Local configuration created at .build-config"
+        print_success "Local configuration created at .env"
     else
         print_success "Local configuration already exists"
     fi
 
     # Create .gitignore entry for local config
-    if ! grep -q ".build-config" "${PROJECT_ROOT}/.gitignore" 2>/dev/null; then
+    if ! grep -q ".env" "${PROJECT_ROOT}/.gitignore" 2>/dev/null; then
         echo "" >> "${PROJECT_ROOT}/.gitignore"
         echo "# Local build configuration" >> "${PROJECT_ROOT}/.gitignore"
-        echo ".build-config" >> "${PROJECT_ROOT}/.gitignore"
-        print_success "Added .build-config to .gitignore"
+        echo ".env" >> "${PROJECT_ROOT}/.gitignore"
+        print_success "Added .env to .gitignore"
     fi
 }
 
