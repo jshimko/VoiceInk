@@ -135,22 +135,82 @@ check_cmake() {
     print_status "Checking CMake installation..."
 
     if ! command -v cmake &> /dev/null; then
-        print_warning "CMake is not installed (optional but recommended)"
-        echo "You can install CMake using:"
-        echo "  1. Homebrew: brew install cmake"
-        echo "  2. Download from: https://cmake.org/download/"
-        echo ""
+        print_warning "CMake is not installed (REQUIRED)"
         echo "CMake is required for building whisper.cpp from source"
-        return 1
+
+        # Check if Homebrew is available for automatic installation
+        if command -v brew &> /dev/null; then
+            echo ""
+            printf "Would you like to install CMake using Homebrew? (Y/n): "
+            read -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                print_status "Installing CMake via Homebrew..."
+                if brew install cmake; then
+                    print_success "CMake installed successfully!"
+                    # Verify installation
+                    CMAKE_VERSION=$(cmake --version | head -n1 | awk '{print $3}')
+                    print_success "CMake $CMAKE_VERSION installed"
+                    return 0
+                else
+                    print_error "Failed to install CMake via Homebrew"
+                    echo "Please try installing manually from: https://cmake.org/download/"
+                    return 1
+                fi
+            else
+                print_error "CMake installation declined"
+                echo "Please install CMake manually:"
+                echo "  brew install cmake"
+                echo "  or download from: https://cmake.org/download/"
+                return 1
+            fi
+        else
+            # Homebrew not available
+            echo ""
+            echo "Homebrew is not installed. To install CMake:"
+            echo "  1. Install Homebrew first:"
+            echo '     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+            echo "  2. Then install CMake:"
+            echo "     brew install cmake"
+            echo ""
+            echo "Or download CMake from: https://cmake.org/download/"
+            return 1
+        fi
     fi
 
     CMAKE_VERSION=$(cmake --version | head -n1 | awk '{print $3}')
     if version_ge "$CMAKE_VERSION" "$MIN_CMAKE_VERSION"; then
         print_success "CMake $CMAKE_VERSION (minimum: $MIN_CMAKE_VERSION)"
+        return 0
     else
-        print_warning "CMake $CMAKE_VERSION may be too old (recommended: $MIN_CMAKE_VERSION+)"
+        print_warning "CMake $CMAKE_VERSION is too old (minimum required: $MIN_CMAKE_VERSION)"
+
+        if command -v brew &> /dev/null; then
+            echo ""
+            printf "Would you like to upgrade CMake using Homebrew? (Y/n): "
+            read -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                print_status "Upgrading CMake via Homebrew..."
+                if brew upgrade cmake; then
+                    CMAKE_VERSION=$(cmake --version | head -n1 | awk '{print $3}')
+                    print_success "CMake upgraded to $CMAKE_VERSION"
+                    return 0
+                else
+                    print_error "Failed to upgrade CMake"
+                    return 1
+                fi
+            else
+                print_error "CMake upgrade declined"
+                echo "Please upgrade CMake manually to version $MIN_CMAKE_VERSION or newer"
+                return 1
+            fi
+        else
+            echo "Please update CMake to version $MIN_CMAKE_VERSION or newer"
+            echo "Download from: https://cmake.org/download/"
+            return 1
+        fi
     fi
-    return 0
 }
 
 check_homebrew() {
@@ -259,16 +319,16 @@ main() {
     # Track if all requirements are met
     ALL_REQUIREMENTS_MET=true
 
-    # Run checks
+    # Run required checks
     check_disk_space || ALL_REQUIREMENTS_MET=false
     check_macos_version || ALL_REQUIREMENTS_MET=false
     check_xcode || ALL_REQUIREMENTS_MET=false
     check_command_line_tools || ALL_REQUIREMENTS_MET=false
     check_git || ALL_REQUIREMENTS_MET=false
+    check_cmake || ALL_REQUIREMENTS_MET=false
 
     echo ""
     echo "Optional components:"
-    check_cmake || true
     check_homebrew || true
     check_xcpretty || true
 

@@ -67,10 +67,10 @@ clone_whisper_cpp() {
         print_success "whisper.cpp repository found at $WHISPER_DIR"
 
         # Ask if user wants to update
-        printf "Do you want to update whisper.cpp to the latest version? (y/N): "
+        printf "Do you want to update whisper.cpp to the latest version? (Y/n): "
         read -n 1 -r
         echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             print_status "Updating whisper.cpp..."
             cd "$WHISPER_DIR"
             git fetch origin
@@ -100,10 +100,10 @@ check_build_script() {
 
 clean_previous_build() {
     if [ -d "${WHISPER_DIR}/build-apple" ]; then
-        printf "Do you want to clean the previous build? (y/N): "
+        printf "Do you want to clean the previous build? (Y/n): "
         read -n 1 -r
         echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             print_status "Cleaning previous build..."
             rm -rf "${WHISPER_DIR}/build-apple"
             print_success "Previous build cleaned"

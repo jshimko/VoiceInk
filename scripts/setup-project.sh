@@ -52,13 +52,14 @@ show_progress() {
 check_environment() {
     show_progress 1 7 "Checking development environment..."
 
-    print_status "Running environment check..."
+    print_status "Running environment check (may prompt for installations)..."
     if "${SCRIPT_DIR}/setup-environment.sh"; then
         print_success "Environment check passed"
+        return 0
     else
         print_error "Environment check failed"
         echo "Please fix the issues above and run this script again"
-        exit 1
+        return 1
     fi
 }
 
@@ -69,7 +70,10 @@ setup_whisper_cpp() {
     if [ ! -d "$WHISPER_DIR" ]; then
         print_status "Cloning whisper.cpp repository..."
         cd "$(dirname "$WHISPER_DIR")"
-        git clone https://github.com/ggerganov/whisper.cpp.git
+        if ! git clone https://github.com/ggerganov/whisper.cpp.git; then
+            print_error "Failed to clone whisper.cpp repository"
+            return 1
+        fi
         cd - > /dev/null
         print_success "whisper.cpp cloned successfully"
     else
@@ -79,16 +83,23 @@ setup_whisper_cpp() {
     # Check if framework is already built
     if [ -d "$FRAMEWORK_PATH" ]; then
         print_success "whisper.xcframework already built"
-        printf "Do you want to rebuild the framework? (y/N): "
+        printf "Do you want to rebuild the framework? (Y/n): "
         read -n 1 -r
         echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            "${SCRIPT_DIR}/build-whisper.sh"
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            if ! "${SCRIPT_DIR}/build-whisper.sh"; then
+                print_error "Failed to build whisper.xcframework"
+                return 1
+            fi
         fi
     else
         print_status "Building whisper.xcframework..."
-        "${SCRIPT_DIR}/build-whisper.sh"
+        if ! "${SCRIPT_DIR}/build-whisper.sh"; then
+            print_error "Failed to build whisper.xcframework"
+            return 1
+        fi
     fi
+    return 0
 }
 
 configure_xcode_project() {
@@ -144,6 +155,7 @@ setup_code_signing() {
         print_success "Development certificate found"
         CERT_NAME=$(security find-identity -v -p codesigning | grep -E "Apple Development|Mac Developer" | head -1 | sed 's/.*"\(.*\)".*/\1/')
         echo "  Certificate: $CERT_NAME"
+        return 0
     else
         print_warning "No development certificate found"
         echo ""
@@ -152,6 +164,7 @@ setup_code_signing() {
         echo "2. Select VoiceInk target → Signing & Capabilities"
         echo "3. Enable 'Automatically manage signing'"
         echo "4. Select your personal team (or add your Apple ID)"
+        return 1  # Return failure for code signing
     fi
 }
 
@@ -193,6 +206,59 @@ EOF
     fi
 }
 
+verify_setup() {
+    print_status "Verifying setup configuration..."
+
+    local VERIFICATION_SUCCESS=true
+    local ISSUES_FOUND=""
+
+    # Check whisper.cpp framework
+    if [ ! -d "$FRAMEWORK_PATH" ]; then
+        print_error "whisper.xcframework not found at $FRAMEWORK_PATH"
+        VERIFICATION_SUCCESS=false
+        ISSUES_FOUND="${ISSUES_FOUND}  - Missing whisper.xcframework\n"
+    else
+        print_success "whisper.xcframework verified"
+    fi
+
+    # Check CMake (required for rebuilds)
+    if ! command -v cmake &> /dev/null; then
+        print_error "CMake not installed (required for building whisper.cpp)"
+        VERIFICATION_SUCCESS=false
+        ISSUES_FOUND="${ISSUES_FOUND}  - CMake not installed\n"
+    else
+        print_success "CMake available"
+    fi
+
+    # Check Xcode project
+    if [ ! -f "${PROJECT_ROOT}/VoiceInk.xcodeproj/project.pbxproj" ]; then
+        print_error "Xcode project file not found"
+        VERIFICATION_SUCCESS=false
+        ISSUES_FOUND="${ISSUES_FOUND}  - Xcode project missing\n"
+    else
+        print_success "Xcode project verified"
+    fi
+
+    # Check build tools
+    if ! xcodebuild -version &> /dev/null; then
+        print_error "xcodebuild not available"
+        VERIFICATION_SUCCESS=false
+        ISSUES_FOUND="${ISSUES_FOUND}  - Xcode command line tools issue\n"
+    else
+        print_success "Build tools verified"
+    fi
+
+    if [ "$VERIFICATION_SUCCESS" = false ]; then
+        echo ""
+        echo -e "${RED}Setup verification failed. Issues found:${NC}"
+        echo -e "$ISSUES_FOUND"
+        return 1
+    else
+        print_success "All critical components verified!"
+        return 0
+    fi
+}
+
 run_initial_build() {
     show_progress 7 7 "Running initial build test..."
 
@@ -204,13 +270,16 @@ run_initial_build() {
 
         if "${SCRIPT_DIR}/build-app.sh" --configuration Debug; then
             print_success "Test build completed successfully!"
+            return 0
         else
             print_warning "Test build failed"
             echo "This might be due to code signing or framework linking issues"
             echo "Try opening the project in Xcode to resolve any issues"
+            return 1
         fi
     else
         print_status "Skipping test build"
+        return 0
     fi
 }
 
@@ -236,7 +305,7 @@ EOF
     print_success "Created shortcuts: ./build and ./test"
 }
 
-show_next_steps() {
+show_success_message() {
     echo ""
     echo "================================================"
     echo -e "${GREEN}  Setup Complete!${NC}"
@@ -269,6 +338,21 @@ show_next_steps() {
     echo -e "${GREEN}Happy coding! 🚀${NC}"
 }
 
+show_failure_message() {
+    echo ""
+    echo "================================================"
+    echo -e "${RED}  Setup Failed${NC}"
+    echo "================================================"
+    echo ""
+    echo -e "${RED}Critical issues were found that will prevent builds from succeeding.${NC}"
+    echo ""
+    echo "Please review the errors above and:"
+    echo "1. Fix the reported issues"
+    echo "2. Run this setup script again"
+    echo ""
+    echo "For help, see docs/build.md or open an issue on GitHub"
+}
+
 # Main execution
 main() {
     echo "================================================"
@@ -295,20 +379,107 @@ main() {
 
     echo ""
 
+    # Track setup status
+    SETUP_SUCCESS=true
+    CRITICAL_FAILURES=""
+    WARNINGS=""
+
     # Run setup steps
-    check_environment
-    setup_whisper_cpp
+    if ! check_environment; then
+        SETUP_SUCCESS=false
+        CRITICAL_FAILURES="${CRITICAL_FAILURES}Environment check failed\n"
+    fi
+
+    if ! setup_whisper_cpp; then
+        SETUP_SUCCESS=false
+        CRITICAL_FAILURES="${CRITICAL_FAILURES}Whisper.cpp framework setup failed\n"
+    fi
+
     configure_xcode_project
+
     resolve_swift_packages
-    setup_code_signing
+
+    if ! setup_code_signing; then
+        WARNINGS="${WARNINGS}Code signing not configured (required for distribution)\n"
+    fi
+
     create_local_config
     create_shortcuts
-    run_initial_build
 
-    # Show completion message
-    show_next_steps
+    # Run verification
+    echo ""
+    if ! verify_setup; then
+        SETUP_SUCCESS=false
+        CRITICAL_FAILURES="${CRITICAL_FAILURES}Setup verification failed\n"
+    fi
 
-    exit 0
+    # Only run build test if everything else succeeded
+    if [ "$SETUP_SUCCESS" = true ]; then
+        run_initial_build
+    fi
+
+    # Show summary
+    echo ""
+    echo "================================================"
+    echo "  Setup Summary"
+    echo "================================================"
+    echo ""
+
+    # Show status of each component
+    echo -e "${CYAN}Component Status:${NC}"
+    echo ""
+
+    # Environment
+    if command -v xcodebuild &> /dev/null; then
+        echo -e "  ${GREEN}✓${NC} Xcode installed"
+    else
+        echo -e "  ${RED}✗${NC} Xcode missing"
+    fi
+
+    if command -v cmake &> /dev/null; then
+        echo -e "  ${GREEN}✓${NC} CMake installed"
+    else
+        echo -e "  ${RED}✗${NC} CMake missing (REQUIRED)"
+    fi
+
+    # Whisper framework
+    if [ -d "$FRAMEWORK_PATH" ]; then
+        echo -e "  ${GREEN}✓${NC} whisper.xcframework built"
+    else
+        echo -e "  ${RED}✗${NC} whisper.xcframework missing (REQUIRED)"
+    fi
+
+    # Code signing
+    if security find-identity -v -p codesigning 2>/dev/null | grep -q "Apple Development\|Mac Developer"; then
+        echo -e "  ${GREEN}✓${NC} Code signing configured"
+    else
+        echo -e "  ${YELLOW}!${NC} Code signing not configured (needed for distribution)"
+    fi
+
+    # Project
+    if [ -f "${PROJECT_ROOT}/VoiceInk.xcodeproj/project.pbxproj" ]; then
+        echo -e "  ${GREEN}✓${NC} Xcode project configured"
+    else
+        echo -e "  ${RED}✗${NC} Xcode project not found"
+    fi
+
+    # Show appropriate completion message and exit with correct code
+    if [ "$SETUP_SUCCESS" = true ]; then
+        show_success_message
+        exit 0
+    else
+        echo ""
+        if [ -n "$CRITICAL_FAILURES" ]; then
+            echo -e "${RED}Critical Failures:${NC}"
+            echo -e "$CRITICAL_FAILURES"
+        fi
+        if [ -n "$WARNINGS" ]; then
+            echo -e "${YELLOW}Warnings:${NC}"
+            echo -e "$WARNINGS"
+        fi
+        show_failure_message
+        exit 1
+    fi
 }
 
 # Handle script arguments
