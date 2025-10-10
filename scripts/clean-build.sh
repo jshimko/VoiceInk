@@ -321,7 +321,7 @@ clean_summary() {
         echo ""
         echo "Next steps:"
         echo "  1. Run ./setup-project.sh to rebuild dependencies"
-        echo "  2. Run ./build-app.sh to build the app"
+        echo "  2. Run task build to build the app"
     fi
 }
 

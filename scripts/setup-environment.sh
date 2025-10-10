@@ -349,7 +349,7 @@ main() {
         echo ""
         echo "Next steps:"
         echo "1. Run ./setup-project.sh to set up the project"
-        echo "2. Run ./build-app.sh to build VoiceInk"
+        echo "2. Run task build to build VoiceInk"
         echo "3. Or open VoiceInk.xcodeproj in Xcode"
 
         install_missing_tools

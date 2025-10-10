@@ -283,27 +283,6 @@ run_initial_build() {
     fi
 }
 
-create_shortcuts() {
-    print_status "Creating convenience shortcuts..."
-
-    # Create a simple 'build' command in project root
-    cat > "${PROJECT_ROOT}/build" << 'EOF'
-#!/bin/bash
-# Quick build command
-exec "${0%/*}/scripts/build-app.sh" "$@"
-EOF
-    chmod +x "${PROJECT_ROOT}/build"
-
-    # Create a simple 'test' command in project root
-    cat > "${PROJECT_ROOT}/test" << 'EOF'
-#!/bin/bash
-# Quick test command
-exec "${0%/*}/scripts/run-tests.sh" "$@"
-EOF
-    chmod +x "${PROJECT_ROOT}/test"
-
-    print_success "Created shortcuts: ./build and ./test"
-}
 
 show_success_message() {
     echo ""
@@ -314,9 +293,9 @@ show_success_message() {
     echo "Your VoiceInk development environment is ready!"
     echo ""
     echo -e "${CYAN}Quick Commands:${NC}"
-    echo "  ./build           - Build the app (debug)"
-    echo "  ./build --release - Build the app (release)"
-    echo "  ./test            - Run all tests"
+    echo "  task build        - Build the app (debug)"
+    echo "  task build:release - Build the app (release)"
+    echo "  task test         - Run all tests"
     echo ""
     echo -e "${CYAN}Next Steps:${NC}"
     echo "1. Open the project in Xcode:"
@@ -330,7 +309,7 @@ show_success_message() {
     echo ""
     echo "3. Build and run:"
     echo "   - Press Cmd+R in Xcode"
-    echo "   - Or use: ./build"
+    echo "   - Or use: task build"
     echo ""
     echo -e "${CYAN}Documentation:${NC}"
     echo "  See docs/build.md for detailed build instructions"
@@ -404,7 +383,6 @@ main() {
     fi
 
     create_local_config
-    create_shortcuts
 
     # Run verification
     echo ""
