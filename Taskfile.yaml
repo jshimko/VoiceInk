@@ -85,6 +85,7 @@ tasks:
         echo "  {{.GREEN}}task test{{.NC}}           - Run all tests"
         echo "  {{.GREEN}}task clean{{.NC}}          - Clean build artifacts"
         echo "  {{.GREEN}}task release{{.NC}}        - Create release build"
+        echo "  {{.GREEN}}task reset{{.NC}}          - Reset user data (for development)"
         echo ""
         echo "{{.BLUE}}📚 Documentation:{{.NC}}"
         echo "  {{.GREEN}}task --list{{.NC}}         - Show all available tasks"
@@ -599,6 +600,128 @@ tasks:
     preconditions:
       - sh: test -f {{.SCRIPTS_DIR}}/install.sh
         msg: "Install script not found"
+
+  # ============================================================================
+  # Data Reset Tasks
+  # ============================================================================
+
+  reset:
+    desc: Show available reset options
+    summary: |
+      Display available data reset commands for local development.
+
+      Use these commands to simulate a fresh install by removing user data.
+
+      Available reset modes:
+        - task reset:all           - Remove everything (most thorough)
+        - task reset:data          - Remove app data (transcriptions + models)
+        - task reset:transcriptions - Remove only transcriptions
+        - task reset:models        - Remove only downloaded models
+        - task reset:preferences   - Remove only settings
+
+      All commands show a preview and ask for confirmation.
+      Use --force to skip confirmation, --dry-run to preview only.
+    deps: [build:release]
+
+  reset:all:
+    desc: Remove all VoiceInk user data (transcriptions, models, preferences, caches)
+    summary: |
+      Performs the most thorough reset by removing:
+        - All Application Support data (transcriptions + models)
+        - All UserDefaults/preferences
+        - All cache directories
+
+      This simulates a completely fresh install.
+
+      Options:
+        task reset:all -- --dry-run  # Preview without deleting
+        task reset:all -- --force    # Skip confirmation
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/reset-data.sh {{.CLI_ARGS}} all"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/reset-data.sh
+        msg: "reset-data.sh script not found"
+
+  reset:data:
+    desc: Remove Application Support data (transcriptions and models)
+    summary: |
+      Removes all VoiceInk data from Application Support:
+        - Transcription database (SwiftData)
+        - Audio recordings
+        - Downloaded Whisper models
+        - Parakeet models
+
+      Preserves: UserDefaults preferences and caches
+
+      Options:
+        task reset:data -- --dry-run  # Preview without deleting
+        task reset:data -- --force    # Skip confirmation
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/reset-data.sh {{.CLI_ARGS}} data"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/reset-data.sh
+        msg: "reset-data.sh script not found"
+
+  reset:transcriptions:
+    desc: Remove only transcription data and recordings
+    summary: |
+      Removes only transcription-related data:
+        - SwiftData transcription database
+        - Audio recordings directory
+
+      Preserves: Models, preferences, and caches
+
+      Useful for: Testing fresh transcription workflows without
+                   re-downloading large model files
+
+      Options:
+        task reset:transcriptions -- --dry-run  # Preview without deleting
+        task reset:transcriptions -- --force    # Skip confirmation
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/reset-data.sh {{.CLI_ARGS}} transcriptions"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/reset-data.sh
+        msg: "reset-data.sh script not found"
+
+  reset:models:
+    desc: Remove only downloaded Whisper and Parakeet models
+    summary: |
+      Removes only model files:
+        - WhisperModels directory
+        - ParakeetModels directory
+
+      Preserves: Transcriptions, recordings, preferences
+
+      Useful for: Forcing model re-downloads or freeing disk space
+
+      Options:
+        task reset:models -- --dry-run  # Preview without deleting
+        task reset:models -- --force    # Skip confirmation
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/reset-data.sh {{.CLI_ARGS}} models"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/reset-data.sh
+        msg: "reset-data.sh script not found"
+
+  reset:preferences:
+    desc: Remove only UserDefaults/preferences
+    summary: |
+      Removes only app preferences and settings:
+        - All .plist files in ~/Library/Preferences
+        - All @AppStorage values reset to defaults
+
+      Preserves: All data files (transcriptions, models, recordings)
+
+      Useful for: Testing default settings or fixing corrupted preferences
+
+      Options:
+        task reset:preferences -- --dry-run  # Preview without deleting
+        task reset:preferences -- --force    # Skip confirmation
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/reset-data.sh {{.CLI_ARGS}} preferences"
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/reset-data.sh
+        msg: "reset-data.sh script not found"
 
   # ============================================================================
   # Development Utility Tasks
