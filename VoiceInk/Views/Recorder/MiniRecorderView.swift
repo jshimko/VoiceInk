@@ -23,7 +23,7 @@ struct MiniRecorderView: View {
             VisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
                 .opacity(0.05)
         }
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private var statusView: some View {
@@ -39,7 +39,7 @@ struct MiniRecorderView: View {
             HStack(spacing: 0) {
                 // Left button zone - always visible
                 RecorderPromptButton(activePopover: $activePopover)
-                    .padding(.leading, 7)
+                    .padding(.leading, 16)
 
                 Spacer()
 
@@ -51,18 +51,18 @@ struct MiniRecorderView: View {
 
                 // Right button zone - always visible
                 RecorderPowerModeButton(activePopover: $activePopover)
-                    .padding(.trailing, 7)
+                    .padding(.trailing, 16)
             }
-            .padding(.vertical, 9)
+            .padding(.vertical, 14)
 
             // Settings info section (expandable)
             if showSettings {
                 Divider()
                     .background(Color.white.opacity(0.2))
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 20)
 
                 RecorderSettingsInfo(whisperState: whisperState, isCompact: false)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 12)
                     .transition(.asymmetric(
                         insertion: .push(from: .top).combined(with: .opacity),
                         removal: .push(from: .bottom).combined(with: .opacity)
@@ -72,11 +72,11 @@ struct MiniRecorderView: View {
     }
 
     private var recorderCapsule: some View {
-        Capsule()
+        RoundedRectangle(cornerRadius: 10)
             .fill(.clear)
             .background(backgroundView)
             .overlay {
-                Capsule()
+                RoundedRectangle(cornerRadius: 10)
                     .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5)
             }
             .overlay {

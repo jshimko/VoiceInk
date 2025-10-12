@@ -428,8 +428,8 @@ struct RecorderSettingsInfo: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
         }
     }
 

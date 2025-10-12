@@ -4,7 +4,7 @@ import AppKit
 class MiniRecorderPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
-    
+
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
@@ -14,7 +14,7 @@ class MiniRecorderPanel: NSPanel {
         )
         configurePanel()
     }
-    
+
     private func configurePanel() {
         isFloatingPanel = true
         level = .floating
@@ -29,14 +29,14 @@ class MiniRecorderPanel: NSPanel {
         titleVisibility = .hidden
         standardWindowButton(.closeButton)?.isHidden = true
     }
-    
+
     static func calculateWindowMetrics() -> NSRect {
         guard let screen = NSScreen.main else {
-            return NSRect(x: 0, y: 0, width: 220, height: 80)
+            return NSRect(x: 0, y: 0, width: 440, height: 90)
         }
 
-        let width: CGFloat = 220  // Increased width to accommodate settings
-        let height: CGFloat = 80  // Increased height for expandable settings
+        let width: CGFloat = 440
+        let height: CGFloat = 90
         let padding: CGFloat = 24
 
         let visibleFrame = screen.visibleFrame
@@ -51,14 +51,14 @@ class MiniRecorderPanel: NSPanel {
             height: height
         )
     }
-    
+
     func show() {
         let metrics = MiniRecorderPanel.calculateWindowMetrics()
         setFrame(metrics, display: true)
         orderFrontRegardless()
     }
-    
+
     func hide(completion: @escaping () -> Void) {
         completion()
     }
-} 
+}
