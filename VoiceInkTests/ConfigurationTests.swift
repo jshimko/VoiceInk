@@ -108,8 +108,9 @@ class ConfigurationTests: XCTestCase {
         let validURL = "https://example.com"
         XCTAssertNotNil(config.url(from: validURL))
 
-        // Test invalid URL
-        let invalidURL = "not a url"
+        // Test invalid URL - use a string that actually fails URL initialization
+        // URL(string:) returns nil for strings with invalid characters like spaces after scheme
+        let invalidURL = "http:// invalid"
         XCTAssertNil(config.url(from: invalidURL))
 
         // Test empty string

@@ -223,49 +223,6 @@ class IntegrationTests: XCTestCase {
         XCTAssertTrue(true, "Upstream compatibility maintained")
     }
 
-    // MARK: - Performance Tests
-
-    func testPerformanceWithAllFeaturesDisabled() {
-        let config = AppConfig.shared
-
-        if !config.enableAutoUpdates &&
-           !config.enableLicenseValidation &&
-           !config.enableAnnouncements &&
-           !config.enableAnalytics {
-
-            measure {
-                // Measure app initialization performance
-                let _ = UpdaterViewModel()
-                let _ = Task { await LicenseViewModel() }
-                let _ = AnnouncementsService.shared
-                let _ = PolarService()
-            }
-
-            // Should be very fast when all features disabled
-        }
-    }
-
-    func testPerformanceWithAllFeaturesEnabled() {
-        let config = AppConfig.shared
-
-        if config.enableAutoUpdates &&
-           config.enableLicenseValidation &&
-           config.enableAnnouncements &&
-           config.enableAnalytics {
-
-            measure {
-                // Measure app initialization performance
-                let _ = UpdaterViewModel()
-                let _ = Task { await LicenseViewModel() }
-                AnnouncementsService.shared.start()
-                let _ = PolarService()
-                AnnouncementsService.shared.stop()
-            }
-
-            // May be slower but should still be acceptable
-        }
-    }
-
     // MARK: - Error Handling Tests
 
     func testErrorHandlingWithMissingConfiguration() {

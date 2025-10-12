@@ -182,8 +182,9 @@ run_unit_tests() {
         TEST_ARGS+=("-parallel-testing-enabled" "NO")
     fi
 
-    # Disable code signing for tests
-    TEST_ARGS+=("CODE_SIGN_IDENTITY=" "CODE_SIGNING_REQUIRED=NO")
+    # Allow automatic provisioning for code signing
+    # Note: Cannot disable signing because UI tests target builds alongside unit tests
+    TEST_ARGS+=("-allowProvisioningUpdates")
 
     # Output format
     case $OUTPUT_FORMAT in
@@ -258,8 +259,9 @@ run_ui_tests() {
         TEST_ARGS+=("-parallel-testing-enabled" "YES")
     fi
 
-    # Disable code signing for tests
-    TEST_ARGS+=("CODE_SIGN_IDENTITY=" "CODE_SIGNING_REQUIRED=NO")
+    # UI tests require code signing - use automatic provisioning
+    # Note: UI testing bundles cannot be unsigned, so we enable automatic signing
+    TEST_ARGS+=("-allowProvisioningUpdates")
 
     # Output format
     case $OUTPUT_FORMAT in
