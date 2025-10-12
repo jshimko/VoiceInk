@@ -271,18 +271,190 @@ struct RecorderPowerModeButton: View {
     }
 }
 
+// MARK: - Settings Info Component
+struct RecorderSettingsInfo: View {
+    @ObservedObject var whisperState: WhisperState
+    @EnvironmentObject private var enhancementService: AIEnhancementService
+    @ObservedObject private var powerModeManager = PowerModeManager.shared
+    let isCompact: Bool
+    @State private var isExpanded: Bool = false
+
+    init(whisperState: WhisperState, isCompact: Bool = false) {
+        self.whisperState = whisperState
+        self.isCompact = isCompact
+    }
+
+    private var transcriptionModelInfo: (name: String, type: String)? {
+        guard let model = whisperState.currentTranscriptionModel else { return nil }
+        return (model.displayName, model.provider.rawValue)
+    }
+
+    private var activePresetName: String? {
+        if let activeConfig = powerModeManager.currentActiveConfiguration {
+            return "\(activeConfig.emoji) \(activeConfig.name)"
+        }
+        return nil
+    }
+
+    private var enhancementPromptName: String? {
+        guard enhancementService.isEnhancementEnabled,
+              let prompt = enhancementService.activePrompt else { return nil }
+        return prompt.title
+    }
+
+    private var aiProviderName: String? {
+        guard enhancementService.isEnhancementEnabled else { return nil }
+        if let savedProvider = UserDefaults.standard.string(forKey: "selectedAIProvider") {
+            // Map the provider key to display name
+            switch savedProvider {
+            case "openai": return "OpenAI"
+            case "anthropic": return "Anthropic"
+            case "gemini": return "Gemini"
+            case "groq": return "Groq"
+            case "ollama": return "Ollama"
+            case "openRouter": return "OpenRouter"
+            case "custom": return "Custom"
+            default: return savedProvider
+            }
+        }
+        return nil
+    }
+
+    var body: some View {
+        if isCompact {
+            // Compact view for NotchRecorder
+            HStack(spacing: 6) {
+                if let modelInfo = transcriptionModelInfo {
+                    HStack(spacing: 3) {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.5))
+                        Text("\(modelInfo.name)")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                }
+
+                if let presetName = activePresetName {
+                    Text(presetName)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.orange.opacity(0.8))
+                }
+            }
+        } else {
+            // Expandable view for MiniRecorder
+            VStack(spacing: 4) {
+                // Always visible summary
+                HStack(spacing: 8) {
+                    if let modelInfo = transcriptionModelInfo {
+                        HStack(spacing: 4) {
+                            Image(systemName: "waveform.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.5))
+                            Text(modelInfo.name)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                    }
+
+                    if let presetName = activePresetName {
+                        Text(presetName)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.orange.opacity(0.8))
+                    }
+
+                    Spacer()
+
+                    // Expand/collapse indicator
+                    Image(systemName: isExpanded ? "chevron.up.circle" : "chevron.down.circle")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isExpanded.toggle()
+                    }
+                }
+
+                // Expanded details
+                if isExpanded {
+                    VStack(alignment: .leading, spacing: 3) {
+                        if let modelInfo = transcriptionModelInfo {
+                            HStack(spacing: 4) {
+                                Text("Model:")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.5))
+                                Text("\(modelInfo.name) (\(modelInfo.type))")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+
+                        if let promptName = enhancementPromptName {
+                            HStack(spacing: 4) {
+                                Text("Prompt:")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.5))
+                                Text(promptName)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.blue.opacity(0.7))
+                            }
+                        }
+
+                        if let providerName = aiProviderName {
+                            HStack(spacing: 4) {
+                                Text("AI:")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.5))
+                                Text(providerName)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.green.opacity(0.7))
+                            }
+                        }
+
+                        if let langCode = UserDefaults.standard.string(forKey: "SelectedLanguage") {
+                            HStack(spacing: 4) {
+                                Text("Lang:")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.5))
+                                Text(languageName(for: langCode))
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+                    }
+                    .padding(.top, 2)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func languageName(for code: String) -> String {
+        if code == "en" { return "English" }
+        if let model = whisperState.currentTranscriptionModel,
+           let langName = model.supportedLanguages[code] {
+            return langName
+        }
+        return code.uppercased()
+    }
+}
+
 // MARK: - Status Display Component
 struct RecorderStatusDisplay: View {
     let currentState: RecordingState
     let audioMeter: AudioMeter
     let menuBarHeight: CGFloat?
-    
+
     init(currentState: RecordingState, audioMeter: AudioMeter, menuBarHeight: CGFloat? = nil) {
         self.currentState = currentState
         self.audioMeter = audioMeter
         self.menuBarHeight = menuBarHeight
     }
-    
+
     var body: some View {
         Group {
             if currentState == .enhancing {
@@ -292,7 +464,7 @@ struct RecorderStatusDisplay: View {
                         .font(.system(size: 11, weight: .medium, design: .default))
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
-                    
+
                     ProgressAnimation(animationSpeed: 0.15)
                 }
             } else if currentState == .transcribing {
@@ -302,7 +474,7 @@ struct RecorderStatusDisplay: View {
                         .font(.system(size: 11, weight: .medium, design: .default))
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
-                    
+
                     ProgressAnimation(animationSpeed: 0.12)
                 }
             } else if currentState == .recording {

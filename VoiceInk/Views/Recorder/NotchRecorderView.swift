@@ -46,7 +46,7 @@ struct NotchRecorderView: View {
 
             Spacer()
         }
-        .frame(width: 64)
+        .frame(width: 120)  // Increased to balance with right section
         .padding(.leading, 16)
     }
     
@@ -60,9 +60,14 @@ struct NotchRecorderView: View {
     private var rightSection: some View {
         HStack(spacing: 8) {
             Spacer()
+
+            // Compact settings display
+            RecorderSettingsInfo(whisperState: whisperState, isCompact: true)
+                .padding(.trailing, 4)
+
             statusDisplay
         }
-        .frame(width: 64)
+        .frame(width: 120)  // Increased width to accommodate settings
         .padding(.trailing, 16)
     }
     
