@@ -206,7 +206,7 @@ tasks:
         - task build:release   - Build release version
         - task build:universal - Build universal binary
         - task build:clean     - Clean and rebuild
-        - task build:open      - Build and open in Finder
+        - task build:open      - Build and launch app
     cmds:
       - task: build:debug
 
@@ -275,13 +275,13 @@ tasks:
         msg: "Build script not found"
 
   build:open:
-    desc: Build and reveal in Finder
+    desc: Build and open app
     summary: |
-      Builds the app in debug configuration and opens the
-      build location in Finder.
+      Builds the app in debug configuration and launches it.
+      Equivalent to: task build && open ./build/Build/Products/Debug/VoiceInk.app
     cmds:
       - task: build:debug
-      - cmd: open "{{.BUILD_DIR}}/Build/Products/Debug/"
+      - cmd: open "{{.BUILD_DIR}}/Build/Products/Debug/{{.PROJECT_NAME}}.app"
 
   # ============================================================================
   # Test Tasks

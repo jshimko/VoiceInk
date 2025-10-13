@@ -514,7 +514,6 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-
 				MARKETING_VERSION = 1.59;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jshimko.VoiceInk;
 				PRODUCT_NAME = "$(TARGET_NAME)";

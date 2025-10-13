@@ -75,6 +75,7 @@ struct NotchRecorderView: View {
         RecorderStatusDisplay(
             currentState: whisperState.recordingState,
             audioMeter: recorder.audioMeter,
+            recorder: recorder,
             menuBarHeight: menuBarHeight
         )
         .frame(width: 70)

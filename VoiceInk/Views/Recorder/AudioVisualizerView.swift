@@ -7,7 +7,7 @@ struct AudioVisualizer: View {
 
     private let barCount: Int = 45
     private let minHeight: CGFloat = 5
-    private let maxHeight: CGFloat = 32
+    private let maxHeight: CGFloat = 64
     private let barWidth: CGFloat = 3.0
     private let barSpacing: CGFloat = 2.0
     private let hardThreshold: Double = 0.3
@@ -100,7 +100,7 @@ struct AudioVisualizer: View {
             let targetHeight: CGFloat = minHeight + CGFloat(sensitivityAdjustedLevel) * range
 
             let isDecaying: Bool = targetHeight < targetHeights[i]
-            let smoothingFactor: CGFloat = isDecaying ? 0.55 : 0.25  // Slightly faster response
+            let smoothingFactor: CGFloat = isDecaying ? 0.45 : 0.12
 
             targetHeights[i] = targetHeights[i] * (1 - smoothingFactor) + targetHeight * smoothingFactor
 
@@ -108,7 +108,7 @@ struct AudioVisualizer: View {
         }
 
         // Single batch animation for all bars
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+        withAnimation(.spring(response: 0.15, dampingFraction: 0.70)) {
             barHeights = newHeights
         }
     }

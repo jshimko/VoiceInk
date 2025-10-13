@@ -212,6 +212,32 @@ struct RecorderPromptButton: View {
     }
 }
 
+// MARK: - Visualization Mode Button Component
+struct RecorderVisualizationButton: View {
+    @ObservedObject var recorder: Recorder
+    let buttonSize: CGFloat
+    let padding: EdgeInsets
+
+    init(recorder: Recorder, buttonSize: CGFloat = 28, padding: EdgeInsets = EdgeInsets()) {
+        self.recorder = recorder
+        self.buttonSize = buttonSize
+        self.padding = padding
+    }
+
+    var body: some View {
+        RecorderToggleButton(
+            isEnabled: recorder.isRTAEnabled,
+            icon: recorder.isRTAEnabled ? "waveform.path.ecg" : "waveform",
+            color: .blue
+        ) {
+            recorder.toggleVisualizationMode()
+        }
+        .frame(width: buttonSize)
+        .padding(padding)
+        .help(recorder.isRTAEnabled ? "Switch to Waveform" : "Switch to Frequency Spectrum")
+    }
+}
+
 // MARK: - Power Mode Button Component
 struct RecorderPowerModeButton: View {
     @ObservedObject private var powerModeManager = PowerModeManager.shared
@@ -448,10 +474,12 @@ struct RecorderStatusDisplay: View {
     let currentState: RecordingState
     let audioMeter: AudioMeter
     let menuBarHeight: CGFloat?
+    @ObservedObject var recorder: Recorder
 
-    init(currentState: RecordingState, audioMeter: AudioMeter, menuBarHeight: CGFloat? = nil) {
+    init(currentState: RecordingState, audioMeter: AudioMeter, recorder: Recorder, menuBarHeight: CGFloat? = nil) {
         self.currentState = currentState
         self.audioMeter = audioMeter
+        self.recorder = recorder
         self.menuBarHeight = menuBarHeight
     }
 
@@ -478,15 +506,31 @@ struct RecorderStatusDisplay: View {
                     ProgressAnimation(animationSpeed: 0.12)
                 }
             } else if currentState == .recording {
-                AudioVisualizer(
-                    audioMeter: audioMeter,
-                    color: .white,
-                    isActive: currentState == .recording
-                )
-                .scaleEffect(y: menuBarHeight != nil ? min(1.0, (menuBarHeight! - 8) / 25) : 1.0, anchor: .center)
-            } else {
-                StaticVisualizer(color: .white)
+                // Choose visualization based on RTA mode
+                if recorder.isRTAEnabled {
+                    RTAVisualizerView(
+                        frequencyAnalyzer: recorder.frequencyAnalyzer,
+                        color: .white,
+                        isActive: currentState == .recording
+                    )
                     .scaleEffect(y: menuBarHeight != nil ? min(1.0, (menuBarHeight! - 8) / 25) : 1.0, anchor: .center)
+                } else {
+                    AudioVisualizer(
+                        audioMeter: audioMeter,
+                        color: .white,
+                        isActive: currentState == .recording
+                    )
+                    .scaleEffect(y: menuBarHeight != nil ? min(1.0, (menuBarHeight! - 8) / 25) : 1.0, anchor: .center)
+                }
+            } else {
+                // Static visualization based on mode
+                if recorder.isRTAEnabled {
+                    StaticRTAVisualizer(color: .white)
+                        .scaleEffect(y: menuBarHeight != nil ? min(1.0, (menuBarHeight! - 8) / 25) : 1.0, anchor: .center)
+                } else {
+                    StaticVisualizer(color: .white)
+                        .scaleEffect(y: menuBarHeight != nil ? min(1.0, (menuBarHeight! - 8) / 25) : 1.0, anchor: .center)
+                }
             }
         }
     }

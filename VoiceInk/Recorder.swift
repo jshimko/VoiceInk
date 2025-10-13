@@ -4,7 +4,7 @@ import CoreAudio
 import os
 
 @MainActor
-class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
+class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate, AudioTapDelegate {
     private var recorder: AVAudioRecorder?
     private let logger = Logger(subsystem: AppConfig.shared.loggerSubsystem, category: "Recorder")
     private let deviceManager = AudioDeviceManager.shared
@@ -16,6 +16,11 @@ class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var audioLevelCheckTask: Task<Void, Never>?
     private var audioMeterUpdateTask: Task<Void, Never>?
     private var hasDetectedAudioInCurrentSession = false
+
+    // RTA Support
+    private let audioTapManager = AudioTapManager()
+    @Published var frequencyAnalyzer = FrequencyAnalyzer()
+    @Published var isRTAEnabled: Bool = false
     
     enum RecorderError: Error {
         case couldNotStartRecording
@@ -24,6 +29,12 @@ class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     override init() {
         super.init()
         setupDeviceChangeObserver()
+
+        // Setup audio tap for RTA
+        audioTapManager.delegate = self
+
+        // Load RTA preference
+        isRTAEnabled = UserDefaults.standard.bool(forKey: "rtaVisualizationEnabled")
     }
     
     private func setupDeviceChangeObserver() {
@@ -111,10 +122,23 @@ class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 await self.playbackController.pauseMedia()
                 _ = await self.mediaController.muteSystemAudio()
             }
-            
+
             audioLevelCheckTask?.cancel()
             audioMeterUpdateTask?.cancel()
-            
+
+            // Start audio tap for RTA if enabled
+            if isRTAEnabled {
+                Task {
+                    do {
+                        try await audioTapManager.startTap(deviceID: deviceManager.getCurrentDevice())
+                        logger.info("RTA audio tap started")
+                    } catch {
+                        logger.error("Failed to start RTA audio tap: \(error.localizedDescription)")
+                        // Continue recording even if tap fails
+                    }
+                }
+            }
+
             audioMeterUpdateTask = Task {
                 while recorder != nil && !Task.isCancelled {
                     updateAudioMeter()
@@ -156,7 +180,11 @@ class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         recorder?.stop()
         recorder = nil
         audioMeter = AudioMeter(averagePower: 0, peakPower: 0)
-        
+
+        // Stop audio tap
+        audioTapManager.stopTap()
+        frequencyAnalyzer.reset()
+
         Task {
             await mediaController.unmuteSystemAudio()
             try? await Task.sleep(nanoseconds: 100_000_000)
@@ -233,6 +261,46 @@ class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         audioMeterUpdateTask?.cancel()
         if let observer = deviceObserver {
             NotificationCenter.default.removeObserver(observer)
+        }
+        audioTapManager.stopTap()
+    }
+
+    // MARK: - AudioTapDelegate
+
+    nonisolated func audioTapManager(_ manager: AudioTapManager, didReceiveBuffer buffer: AVAudioPCMBuffer) {
+        Task { @MainActor in
+            // Process buffer for frequency analysis
+            frequencyAnalyzer.processAudioBuffer(buffer)
+        }
+    }
+
+    nonisolated func audioTapManagerDidStop(_ manager: AudioTapManager) {
+        Task { @MainActor in
+            frequencyAnalyzer.reset()
+        }
+    }
+
+    // MARK: - RTA Control
+
+    func toggleVisualizationMode() {
+        isRTAEnabled.toggle()
+        UserDefaults.standard.set(isRTAEnabled, forKey: "rtaVisualizationEnabled")
+
+        // If recording, restart tap if needed
+        if recorder != nil {
+            if isRTAEnabled {
+                Task {
+                    do {
+                        try await audioTapManager.startTap(deviceID: deviceManager.getCurrentDevice())
+                        logger.info("RTA audio tap started during mode toggle")
+                    } catch {
+                        logger.error("Failed to start RTA audio tap on toggle: \(error.localizedDescription)")
+                    }
+                }
+            } else {
+                audioTapManager.stopTap()
+                frequencyAnalyzer.reset()
+            }
         }
     }
 }

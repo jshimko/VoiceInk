@@ -29,7 +29,8 @@ struct MiniRecorderView: View {
     private var statusView: some View {
         RecorderStatusDisplay(
             currentState: whisperState.recordingState,
-            audioMeter: recorder.audioMeter
+            audioMeter: recorder.audioMeter,
+            recorder: recorder
         )
     }
 
@@ -40,6 +41,13 @@ struct MiniRecorderView: View {
                 // Left button zone - always visible
                 RecorderPromptButton(activePopover: $activePopover)
                     .padding(.leading, 16)
+
+                // Visualization mode toggle
+                RecorderVisualizationButton(
+                    recorder: recorder,
+                    buttonSize: 20,
+                    padding: EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 0)
+                )
 
                 Spacer()
 
