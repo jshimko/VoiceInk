@@ -72,7 +72,7 @@ class AudioTranscriptionManager: ObservableObject {
                 
                 // Initialize parakeet transcription service if needed
                 if parakeetTranscriptionService == nil {
-                    parakeetTranscriptionService = ParakeetTranscriptionService(customModelsDirectory: whisperState.parakeetModelsDirectory)
+                    parakeetTranscriptionService = ParakeetTranscriptionService()
                 }
                 
                 // Process audio file
@@ -85,7 +85,7 @@ class AudioTranscriptionManager: ObservableObject {
                 
                 // Create permanent copy of the audio file
                 let recordingsDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                    .appendingPathComponent("com.jshimko.VoiceInk")
+                    .appendingPathComponent(AppConfig.shared.mainBundleIdentifier)
                     .appendingPathComponent("Recordings")
                 
                 let fileName = "transcribed_\(UUID().uuidString).wav"

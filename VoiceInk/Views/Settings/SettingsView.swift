@@ -243,6 +243,8 @@ struct SettingsView: View {
                     }
                 }
 
+                PowerModeSettingsSection()
+
                 ExperimentalFeaturesSection()
 
                 SettingsSection(
@@ -525,5 +527,3 @@ extension Text {
             .fixedSize(horizontal: false, vertical: true)
     }
 }
-
-

@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcodebuild:*)",
+      "Bash(task:*)",
+      "WebSearch",
+      "Bash(chmod:*)",
+      "Bash(./test-interactive.sh)",
+      "Bash(./scripts/setup-environment.sh:*)",
+      "Bash(xcrun xcresulttool:*)",
+      "Bash(python3:*)",
+      "Bash(tee:*)",
+      "Bash(swiftc:*)",
+      "Read(//Users/jeremy/code/pianobooker/ai/**)",
+      "Bash(test:*)"
+    ],
+    "defaultMode": "plan",
+    "additionalDirectories": [
+      "/Users/jeremy/code/pianobooker/ai/whisper.cpp"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "Sequential thinking"
+  ]
+}
