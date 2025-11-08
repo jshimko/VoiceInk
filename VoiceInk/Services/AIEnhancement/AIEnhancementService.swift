@@ -292,12 +292,17 @@ class AIEnhancementService: ObservableObject {
                 ["role": "user", "content": formattedText]
             ]
 
-            let requestBody: [String: Any] = [
+            var requestBody: [String: Any] = [
                 "model": aiService.currentModel,
                 "messages": messages,
                 "temperature": aiService.currentModel.lowercased().hasPrefix("gpt-5") ? 1.0 : 0.3,
                 "stream": false
             ]
+
+            // Add reasoning_effort parameter if the model supports it
+            if let reasoningEffort = ReasoningConfig.getReasoningParameter(for: aiService.currentModel) {
+                requestBody["reasoning_effort"] = reasoningEffort
+            }
 
             request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
 
@@ -399,13 +404,17 @@ class AIEnhancementService: ObservableObject {
     }
 
     func captureScreenContext() async {
+        guard CGPreflightScreenCaptureAccess() else {
+            return
+        }
+
         if let capturedText = await screenCaptureService.captureAndExtractText() {
             await MainActor.run {
                 self.objectWillChange.send()
             }
         }
     }
-    
+
     func captureClipboardContext() {
         lastCapturedClipboard = NSPasteboard.general.string(forType: .string)
     }
@@ -415,7 +424,7 @@ class AIEnhancementService: ObservableObject {
         screenCaptureService.lastCapturedText = nil
     }
 
-    func addPrompt(title: String, promptText: String, icon: PromptIcon = .documentFill, description: String? = nil, triggerWords: [String] = [], useSystemInstructions: Bool = true) {
+    func addPrompt(title: String, promptText: String, icon: PromptIcon = "doc.text.fill", description: String? = nil, triggerWords: [String] = [], useSystemInstructions: Bool = true) {
         let newPrompt = CustomPrompt(title: title, promptText: promptText, icon: icon, description: description, isPredefined: false, triggerWords: triggerWords, useSystemInstructions: useSystemInstructions)
         customPrompts.append(newPrompt)
         if customPrompts.count == 1 {

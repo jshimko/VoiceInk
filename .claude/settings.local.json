@@ -12,7 +12,9 @@
       "Bash(tee:*)",
       "Bash(swiftc:*)",
       "Read(//Users/jeremy/code/pianobooker/ai/**)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(./scripts/build-whisper.sh:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "defaultMode": "plan",
     "additionalDirectories": [
