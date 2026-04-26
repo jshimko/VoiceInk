@@ -2,42 +2,52 @@ import SwiftUI
 import LaunchAtLogin
 
 struct MenuBarView: View {
-    @EnvironmentObject var whisperState: WhisperState
+    @EnvironmentObject var engine: VoiceInkEngine
+    @EnvironmentObject var recorderUIManager: RecorderUIManager
+    @EnvironmentObject var transcriptionModelManager: TranscriptionModelManager
+    @EnvironmentObject var whisperModelManager: WhisperModelManager
     @EnvironmentObject var hotkeyManager: HotkeyManager
     @EnvironmentObject var menuBarManager: MenuBarManager
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @EnvironmentObject var enhancementService: AIEnhancementService
     @EnvironmentObject var aiService: AIService
+    @ObservedObject var audioDeviceManager = AudioDeviceManager.shared
     @State private var launchAtLoginEnabled = LaunchAtLogin.isEnabled
-    @State private var menuRefreshTrigger = false  // Added to force menu updates
+    @State private var menuRefreshTrigger = false
     @State private var isHovered = false
     
     var body: some View {
         VStack {
+            Button("Toggle Recorder") {
+                recorderUIManager.handleToggleMiniRecorder()
+            }
+
+            Divider()
+
             Menu {
-                ForEach(whisperState.usableModels, id: \.id) { model in
+                ForEach(transcriptionModelManager.usableModels, id: \.id) { model in
                     Button {
                         Task {
-                            await whisperState.setDefaultTranscriptionModel(model)
+                            transcriptionModelManager.setDefaultTranscriptionModel(model)
                         }
                     } label: {
                         HStack {
                             Text(model.displayName)
-                            if whisperState.currentTranscriptionModel?.id == model.id {
+                            if transcriptionModelManager.currentTranscriptionModel?.id == model.id {
                                 Image(systemName: "checkmark")
                             }
                         }
                     }
                 }
-                
+
                 Divider()
-                
+
                 Button("Manage Models") {
                     menuBarManager.openMainWindowAndNavigate(to: "AI Models")
                 }
             } label: {
                 HStack {
-                    Text("Transcription Model: \(whisperState.currentTranscriptionModel?.displayName ?? "None")")
+                    Text("Transcription Model: \(transcriptionModelManager.currentTranscriptionModel?.displayName ?? "None")")
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 10))
                 }
@@ -70,7 +80,6 @@ struct MenuBarView: View {
                         .font(.system(size: 10))
                 }
             }
-            .disabled(!enhancementService.isEnhancementEnabled)
             
             Menu {
                 ForEach(aiService.connectedProviders, id: \.self) { provider in
@@ -85,16 +94,10 @@ struct MenuBarView: View {
                         }
                     }
                 }
-                
+
                 if aiService.connectedProviders.isEmpty {
                     Text("No providers connected")
                         .foregroundColor(.secondary)
-                }
-                
-                Divider()
-                
-                Button("Manage AI Providers") {
-                    menuBarManager.openMainWindowAndNavigate(to: "Enhancement")
                 }
             } label: {
                 HStack {
@@ -103,7 +106,6 @@ struct MenuBarView: View {
                         .font(.system(size: 10))
                 }
             }
-            .disabled(!enhancementService.isEnhancementEnabled)
             
             Menu {
                 ForEach(aiService.availableModels, id: \.self) { model in
@@ -118,16 +120,10 @@ struct MenuBarView: View {
                         }
                     }
                 }
-                
+
                 if aiService.availableModels.isEmpty {
                     Text("No models available")
                         .foregroundColor(.secondary)
-                }
-                
-                Divider()
-                
-                Button("Manage AI Models") {
-                    menuBarManager.openMainWindowAndNavigate(to: "Enhancement")
                 }
             } label: {
                 HStack {
@@ -136,10 +132,35 @@ struct MenuBarView: View {
                         .font(.system(size: 10))
                 }
             }
-            .disabled(!enhancementService.isEnhancementEnabled)
             
-            LanguageSelectionView(whisperState: whisperState, displayMode: .menuItem, whisperPrompt: whisperState.whisperPrompt)
-            
+            LanguageSelectionView(transcriptionModelManager: transcriptionModelManager, displayMode: .menuItem, whisperPrompt: whisperModelManager.whisperPrompt)
+
+            Menu {
+                ForEach(audioDeviceManager.availableDevices, id: \.id) { device in
+                    Button {
+                        audioDeviceManager.selectDeviceAndSwitchToCustomMode(id: device.id)
+                    } label: {
+                        HStack {
+                            Text(device.name)
+                            if audioDeviceManager.getCurrentDevice() == device.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+
+                if audioDeviceManager.availableDevices.isEmpty {
+                    Text("No devices available")
+                        .foregroundColor(.secondary)
+                }
+            } label: {
+                HStack {
+                    Text("Audio Input")
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10))
+                }
+            }
+
             Menu("Additional") {
                 Button {
                     enhancementService.useClipboardContext.toggle()
@@ -153,8 +174,7 @@ struct MenuBarView: View {
                         }
                     }
                 }
-                .disabled(!enhancementService.isEnhancementEnabled)
-                
+
                 Button {
                     enhancementService.useScreenCaptureContext.toggle()
                     menuRefreshTrigger.toggle()
@@ -167,23 +187,27 @@ struct MenuBarView: View {
                         }
                     }
                 }
-                .disabled(!enhancementService.isEnhancementEnabled)
             }
             .id("additional-menu-\(menuRefreshTrigger)")
             
             Divider()
-            
+
             Button("Retry Last Transcription") {
-                LastTranscriptionService.retryLastTranscription(from: whisperState.modelContext, whisperState: whisperState)
+                LastTranscriptionService.retryLastTranscription(
+                    from: engine.modelContext,
+                    transcriptionModelManager: transcriptionModelManager,
+                    serviceRegistry: engine.serviceRegistry,
+                    enhancementService: enhancementService
+                )
             }
-            
+
             Button("Copy Last Transcription") {
-                LastTranscriptionService.copyLastTranscription(from: whisperState.modelContext)
+                LastTranscriptionService.copyLastTranscription(from: engine.modelContext)
             }
             .keyboardShortcut("c", modifiers: [.command, .shift])
             
             Button("History") {
-                menuBarManager.openMainWindowAndNavigate(to: "History")
+                menuBarManager.openHistoryWindow()
             }
             .keyboardShortcut("h", modifiers: [.command, .shift])
             
@@ -214,7 +238,7 @@ struct MenuBarView: View {
             }
             
             Divider()
-            
+
             Button("Quit VoiceInk") {
                 NSApplication.shared.terminate(nil)
             }

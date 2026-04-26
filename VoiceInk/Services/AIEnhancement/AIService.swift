@@ -1,9 +1,9 @@
 import Foundation
-import os
+import LLMkit
 
 enum AIProvider: String, CaseIterable {
     case cerebras = "Cerebras"
-    case groq = "GROQ"
+    case groq = "Groq"
     case gemini = "Gemini"
     case anthropic = "Anthropic"
     case openAI = "OpenAI"
@@ -12,7 +12,9 @@ enum AIProvider: String, CaseIterable {
     case elevenLabs = "ElevenLabs"
     case deepgram = "Deepgram"
     case soniox = "Soniox"
+    case speechmatics = "Speechmatics"
     case ollama = "Ollama"
+    case localCLI = "Local CLI"
     case custom = "Custom"
     
     
@@ -38,8 +40,12 @@ enum AIProvider: String, CaseIterable {
             return "https://api.deepgram.com/v1/listen"
         case .soniox:
             return "https://api.soniox.com/v1"
+        case .speechmatics:
+            return "https://asr.api.speechmatics.com/v2"
         case .ollama:
             return UserDefaults.standard.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"
+        case .localCLI:
+            return ""
         case .custom:
             return UserDefaults.standard.string(forKey: "customProviderBaseURL") ?? ""
         }
@@ -50,13 +56,13 @@ enum AIProvider: String, CaseIterable {
         case .cerebras:
             return "gpt-oss-120b"
         case .groq:
-            return "qwen/qwen3-32b"
+            return "openai/gpt-oss-120b"
         case .gemini:
             return "gemini-2.5-flash-lite"
         case .anthropic:
-            return "claude-haiku-4-5"
+            return "claude-sonnet-4-6"
         case .openAI:
-            return "gpt-5-mini"
+            return "gpt-5.4"
         case .mistral:
             return "mistral-large-latest"
         case .elevenLabs:
@@ -64,9 +70,13 @@ enum AIProvider: String, CaseIterable {
         case .deepgram:
             return "whisper-1"
         case .soniox:
-            return "stt-async-v3"
+            return "stt-async-v4"
+        case .speechmatics:
+            return "speechmatics-enhanced"
         case .ollama:
             return UserDefaults.standard.string(forKey: "ollamaSelectedModel") ?? "mistral"
+        case .localCLI:
+            return "local-cli"
         case .custom:
             return UserDefaults.standard.string(forKey: "customProviderModel") ?? ""
         case .openRouter:
@@ -78,58 +88,65 @@ enum AIProvider: String, CaseIterable {
         switch self {
         case .cerebras:
             return [
-                "llama-4-scout-17b-16e-instruct",
-                "llama-3.3-70b",
                 "gpt-oss-120b",
-                "qwen-3-32b",
-                "qwen-3-235b-a22b-instruct-2507"
+                "llama3.1-8b",
+                "qwen-3-235b-a22b-instruct-2507",
+                "zai-glm-4.7"
             ]
         case .groq:
             return [
                 "llama-3.1-8b-instant",
                 "llama-3.3-70b-versatile",
-                "moonshotai/kimi-k2-instruct-0905",
                 "qwen/qwen3-32b",
-                "meta-llama/llama-4-maverick-17b-128e-instruct",
                 "openai/gpt-oss-120b",
                 "openai/gpt-oss-20b"
             ]
         case .gemini:
             return [
+                "gemini-3.1-pro-preview",
+                "gemini-3-flash-preview",
+                "gemini-3.1-flash-lite-preview",
                 "gemini-2.5-pro",
                 "gemini-2.5-flash",
-                "gemini-2.5-flash-lite",
-                "gemini-2.0-flash-001"
+                "gemini-2.5-flash-lite"
             ]
         case .anthropic:
             return [
-                "claude-opus-4-0",
-                "claude-sonnet-4-0",
+                "claude-opus-4-6",
+                "claude-sonnet-4-6",
+                "claude-opus-4-5",
                 "claude-sonnet-4-5",
                 "claude-haiku-4-5"
             ]
         case .openAI:
             return [
-                "gpt-5",
+                "gpt-5.4",
+                "gpt-5.4-mini",
+                "gpt-5.4-nano",
+                "gpt-5.2",
                 "gpt-5-mini",
                 "gpt-5-nano",
                 "gpt-4.1",
-                "gpt-4.1-mini"
+                "gpt-4.1-mini",
+                "gpt-4.1-nano"
             ]
         case .mistral:
             return [
                 "mistral-large-latest",
                 "mistral-medium-latest",
-                "mistral-small-latest",
-                "mistral-saba-latest"
+                "mistral-small-latest"
             ]
         case .elevenLabs:
             return ["scribe_v1", "scribe_v1_experimental"]
         case .deepgram:
             return ["whisper-1"]
         case .soniox:
-            return ["stt-async-v3"]
+            return ["stt-async-v4"]
+        case .speechmatics:
+            return ["speechmatics-enhanced"]
         case .ollama:
+            return []
+        case .localCLI:
             return []
         case .custom:
             return []
@@ -140,7 +157,7 @@ enum AIProvider: String, CaseIterable {
     
     var requiresAPIKey: Bool {
         switch self {
-        case .ollama:
+        case .ollama, .localCLI:
             return false
         default:
             return true
@@ -149,8 +166,6 @@ enum AIProvider: String, CaseIterable {
 }
 
 class AIService: ObservableObject {
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "AIService")
-    
     @Published var apiKey: String = ""
     @Published var isAPIKeyValid: Bool = false
     @Published var customBaseURL: String = UserDefaults.standard.string(forKey: "customProviderBaseURL") ?? "" {
@@ -167,7 +182,7 @@ class AIService: ObservableObject {
         didSet {
             userDefaults.set(selectedProvider.rawValue, forKey: "selectedAIProvider")
             if selectedProvider.requiresAPIKey {
-                if let savedKey = userDefaults.string(forKey: "\(selectedProvider.rawValue)APIKey") {
+                if let savedKey = APIKeyManager.shared.getAPIKey(forProvider: selectedProvider.rawValue) {
                     self.apiKey = savedKey
                     self.isAPIKeyValid = true
                 } else {
@@ -176,7 +191,7 @@ class AIService: ObservableObject {
                 }
             } else {
                 self.apiKey = ""
-                self.isAPIKeyValid = true
+                self.isAPIKeyValid = selectedProvider == .localCLI ? localCLIService.isConfigured : true
                 if selectedProvider == .ollama {
                     Task {
                         await ollamaService.checkConnection()
@@ -191,6 +206,7 @@ class AIService: ObservableObject {
     @Published private var selectedModels: [AIProvider: String] = [:]
     private let userDefaults = UserDefaults.standard
     private lazy var ollamaService = OllamaService()
+    private lazy var localCLIService = LocalCLIService()
     
     @Published private var openRouterModels: [String] = []
     
@@ -198,8 +214,10 @@ class AIService: ObservableObject {
         AIProvider.allCases.filter { provider in
             if provider == .ollama {
                 return ollamaService.isConnected
+            } else if provider == .localCLI {
+                return localCLIService.isConfigured
             } else if provider.requiresAPIKey {
-                return userDefaults.string(forKey: "\(provider.rawValue)APIKey") != nil
+                return APIKeyManager.shared.hasAPIKey(forProvider: provider.rawValue)
             }
             return false
         }
@@ -215,31 +233,51 @@ class AIService: ObservableObject {
     }
     
     var availableModels: [String] {
-        if selectedProvider == .ollama {
+        availableModels(for: selectedProvider)
+    }
+
+    var localCLICommandTemplate: String {
+        localCLIService.commandTemplate
+    }
+
+    var localCLITemplateSelection: LocalCLITemplate {
+        localCLIService.selectedTemplate
+    }
+
+    var localCLITimeoutSeconds: Double {
+        localCLIService.timeoutSeconds
+    }
+
+    func availableModels(for provider: AIProvider) -> [String] {
+        if provider == .ollama {
             return ollamaService.availableModels.map { $0.name }
-        } else if selectedProvider == .openRouter {
+        } else if provider == .openRouter {
             return openRouterModels
         }
-        return selectedProvider.availableModels
+        return provider.availableModels
     }
     
     init() {
+        if userDefaults.string(forKey: "selectedAIProvider") == "GROQ" {
+            userDefaults.set("Groq", forKey: "selectedAIProvider")
+        }
+
         if let savedProvider = userDefaults.string(forKey: "selectedAIProvider"),
            let provider = AIProvider(rawValue: savedProvider) {
             self.selectedProvider = provider
         } else {
             self.selectedProvider = .gemini
         }
-        
+
         if selectedProvider.requiresAPIKey {
-            if let savedKey = userDefaults.string(forKey: "\(selectedProvider.rawValue)APIKey") {
+            if let savedKey = APIKeyManager.shared.getAPIKey(forProvider: selectedProvider.rawValue) {
                 self.apiKey = savedKey
                 self.isAPIKeyValid = true
             }
         } else {
-            self.isAPIKeyValid = true
+            self.isAPIKeyValid = selectedProvider == .localCLI ? localCLIService.isConfigured : true
         }
-        
+
         loadSavedModelSelections()
         loadSavedOpenRouterModels()
     }
@@ -278,230 +316,78 @@ class AIService: ObservableObject {
         NotificationCenter.default.post(name: .AppSettingsDidChange, object: nil)
     }
     
-    func saveAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
+    func saveAPIKey(_ key: String, completion: @escaping (Bool, String?) -> Void) {
         guard selectedProvider.requiresAPIKey else {
-            completion(true)
+            completion(true, nil)
             return
         }
-        
-        verifyAPIKey(key) { [weak self] isValid in
+
+        verifyAPIKey(key) { [weak self] isValid, errorMessage in
             guard let self = self else { return }
             DispatchQueue.main.async {
                 if isValid {
                     self.apiKey = key
                     self.isAPIKeyValid = true
-                    self.userDefaults.set(key, forKey: "\(self.selectedProvider.rawValue)APIKey")
+                    APIKeyManager.shared.saveAPIKey(key, forProvider: self.selectedProvider.rawValue)
                     NotificationCenter.default.post(name: .aiProviderKeyChanged, object: nil)
                 } else {
                     self.isAPIKeyValid = false
                 }
-                completion(isValid)
+                completion(isValid, errorMessage)
             }
         }
     }
     
-    func verifyAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
+    func verifyAPIKey(_ key: String, completion: @escaping (Bool, String?) -> Void) {
         guard selectedProvider.requiresAPIKey else {
-            completion(true)
+            completion(true, nil)
             return
         }
-        
-        switch selectedProvider {
-        case .anthropic:
-            verifyAnthropicAPIKey(key, completion: completion)
-        case .elevenLabs:
-            verifyElevenLabsAPIKey(key, completion: completion)
-        case .deepgram:
-            verifyDeepgramAPIKey(key, completion: completion)
-        case .mistral:
-            verifyMistralAPIKey(key, completion: completion)
-        case .soniox:
-            verifySonioxAPIKey(key, completion: completion)
-        default:
-            verifyOpenAICompatibleAPIKey(key, completion: completion)
-        }
-    }
-    
-    private func verifyOpenAICompatibleAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
-        let url = URL(string: selectedProvider.baseURL)!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        
-        let testBody: [String: Any] = [
-            "model": currentModel,
-            "messages": [
-                ["role": "user", "content": "test"]
-            ]
-        ]
-        
-        request.httpBody = try? JSONSerialization.data(withJSONObject: testBody)
-        
-        logger.notice("🔑 Verifying API key for \(self.selectedProvider.rawValue, privacy: .public) provider at \(url.absoluteString, privacy: .public)")
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                self.logger.notice("🔑 API key verification failed for \(self.selectedProvider.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                completion(false)
-                return
-            }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                let isValid = httpResponse.statusCode == 200
-                
-                if !isValid {
-                    // Log the exact API error response
-                    if let data = data, let exactAPIError = String(data: data, encoding: .utf8) {
-                        self.logger.notice("🔑 API key verification failed for \(self.selectedProvider.rawValue, privacy: .public) - Status: \(httpResponse.statusCode) - \(exactAPIError, privacy: .public)")
-                    } else {
-                        self.logger.notice("🔑 API key verification failed for \(self.selectedProvider.rawValue, privacy: .public) - Status: \(httpResponse.statusCode)")
+
+        Task {
+            let result: (isValid: Bool, errorMessage: String?)
+            switch selectedProvider {
+            case .anthropic:
+                result = await AnthropicLLMClient.verifyAPIKey(key)
+            case .elevenLabs:
+                result = await ElevenLabsClient.verifyAPIKey(key)
+            case .deepgram:
+                result = await DeepgramClient.verifyAPIKey(key)
+            case .mistral:
+                result = await MistralTranscriptionClient.verifyAPIKey(key)
+            case .soniox:
+                result = await SonioxClient.verifyAPIKey(key)
+            case .speechmatics:
+                result = await SpeechmaticsClient.verifyAPIKey(key)
+            case .openRouter:
+                result = await OpenRouterClient.verifyAPIKey(key, model: currentModel)
+            case .gemini:
+                result = await GeminiTranscriptionClient.verifyAPIKey(key)
+            default:
+                guard let baseURL = URL(string: selectedProvider.baseURL) else {
+                    DispatchQueue.main.async {
+                        completion(false, "Invalid or missing base URL configuration")
                     }
+                    return
                 }
-                
-                completion(isValid)
-            } else {
-                self.logger.notice("🔑 API key verification failed for \(self.selectedProvider.rawValue, privacy: .public): Invalid response")
-                completion(false)
+                result = await OpenAILLMClient.verifyAPIKey(
+                    baseURL: baseURL,
+                    apiKey: key,
+                    model: currentModel
+                )
             }
-        }.resume()
-    }
-    
-    private func verifyAnthropicAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
-        let url = URL(string: selectedProvider.baseURL)!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue(key, forHTTPHeaderField: "x-api-key")
-        request.addValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        
-        let testBody: [String: Any] = [
-            "model": currentModel,
-            "max_tokens": 1024,
-            "system": "You are a test system.",
-            "messages": [
-                ["role": "user", "content": "test"]
-            ]
-        ]
-        
-        request.httpBody = try? JSONSerialization.data(withJSONObject: testBody)
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                completion(false)
-                return
+            DispatchQueue.main.async {
+                completion(result.isValid, result.errorMessage)
             }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                completion(httpResponse.statusCode == 200)
-            } else {
-                completion(false)
-            }
-        }.resume()
-    }
-    
-    private func verifyElevenLabsAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
-        let url = URL(string: "https://api.elevenlabs.io/v1/user")!
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue(key, forHTTPHeaderField: "xi-api-key")
-
-        URLSession.shared.dataTask(with: request) { data, response, _ in
-            let isValid = (response as? HTTPURLResponse)?.statusCode == 200
-
-            if let data = data, let body = String(data: data, encoding: .utf8) {
-                self.logger.info("ElevenLabs verification response: \(body)")
-            }
-
-            completion(isValid)
-        }.resume()
-    }
-    
-    private func verifyMistralAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
-        let url = URL(string: "https://api.mistral.ai/v1/models")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.addValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                self.logger.error("Mistral API key verification failed: \(error.localizedDescription)")
-                completion(false)
-                return
-            }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                if httpResponse.statusCode == 200 {
-                    completion(true)
-                } else {
-                    if let data = data, let body = String(data: data, encoding: .utf8) {
-                        self.logger.error("Mistral API key verification failed with status code \(httpResponse.statusCode): \(body)")
-                    } else {
-                        self.logger.error("Mistral API key verification failed with status code \(httpResponse.statusCode) and no response body.")
-                    }
-                    completion(false)
-                }
-            } else {
-                self.logger.error("Mistral API key verification failed: Invalid response from server.")
-                completion(false)
-            }
-        }.resume()
-    }
-
-    private func verifyDeepgramAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
-        let url = URL(string: "https://api.deepgram.com/v1/auth/token")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.addValue("Token \(key)", forHTTPHeaderField: "Authorization")
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                self.logger.error("Deepgram API key verification failed: \(error.localizedDescription)")
-                completion(false)
-                return
-            }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                completion(httpResponse.statusCode == 200)
-            } else {
-                completion(false)
-            }
-        }.resume()
-    }
-    
-    private func verifySonioxAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
-        guard let url = URL(string: "https://api.soniox.com/v1/files") else {
-            completion(false)
-            return
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.addValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        request.addValue("application/json", forHTTPHeaderField: "Accept")
-        
-        URLSession.shared.dataTask(with: request) { _, response, error in
-            if let error = error {
-                self.logger.error("Soniox API key verification failed: \(error.localizedDescription)")
-                completion(false)
-                return
-            }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                completion(httpResponse.statusCode == 200)
-            } else {
-                completion(false)
-            }
-        }.resume()
     }
     
     func clearAPIKey() {
         guard selectedProvider.requiresAPIKey else { return }
-        
+
         apiKey = ""
         isAPIKeyValid = false
-        userDefaults.removeObject(forKey: "\(selectedProvider.rawValue)APIKey")
+        APIKeyManager.shared.deleteAPIKey(forProvider: selectedProvider.rawValue)
         NotificationCenter.default.post(name: .aiProviderKeyChanged, object: nil)
     }
     
@@ -515,19 +401,16 @@ class AIService: ObservableObject {
         }
     }
     
-    func fetchOllamaModels() async -> [OllamaService.OllamaModel] {
+    func fetchOllamaModels() async -> [OllamaModel] {
         await ollamaService.refreshModels()
         return ollamaService.availableModels
     }
     
     func enhanceWithOllama(text: String, systemPrompt: String) async throws -> String {
-        logger.notice("🔄 Sending transcription to Ollama for enhancement (model: \(self.ollamaService.selectedModel))")
         do {
             let result = try await ollamaService.enhance(text, withSystemPrompt: systemPrompt)
-            logger.notice("✅ Ollama enhancement completed successfully (\(result.count) characters)")
             return result
         } catch {
-            logger.notice("❌ Ollama enhancement failed: \(error.localizedDescription)")
             throw error
         }
     }
@@ -541,57 +424,52 @@ class AIService: ObservableObject {
         ollamaService.selectedModel = modelName
         userDefaults.set(modelName, forKey: "ollamaSelectedModel")
     }
+
+    func loadLocalCLITemplate(_ template: LocalCLITemplate) {
+        localCLIService.loadTemplate(template)
+        refreshLocalCLIConfigurationState()
+    }
+
+    func updateLocalCLICommandTemplate(_ command: String) {
+        localCLIService.commandTemplate = command
+        refreshLocalCLIConfigurationState()
+    }
+
+    func updateLocalCLITimeoutSeconds(_ timeout: Double) {
+        localCLIService.timeoutSeconds = timeout
+        refreshLocalCLIConfigurationState()
+    }
+
+    func enhanceWithLocalCLI(systemPrompt: String, userPrompt: String) async throws -> String {
+        try await localCLIService.enhance(systemPrompt: systemPrompt, userPrompt: userPrompt)
+    }
+
+    private func refreshLocalCLIConfigurationState() {
+        if selectedProvider == .localCLI {
+            isAPIKeyValid = localCLIService.isConfigured
+        }
+        objectWillChange.send()
+        NotificationCenter.default.post(name: .AppSettingsDidChange, object: nil)
+    }
     
     func fetchOpenRouterModels() async {
-        let url = URL(string: "https://openrouter.ai/api/v1/models")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                logger.error("Failed to fetch OpenRouter models: Invalid HTTP response")
-                await MainActor.run { 
-                    self.openRouterModels = []
-                    self.saveOpenRouterModels()
-                    self.objectWillChange.send()
-                }
-                return
-            }
-            
-            guard let jsonResponse = try? JSONSerialization.jsonObject(with: data) as? [String: Any], 
-                  let dataArray = jsonResponse["data"] as? [[String: Any]] else {
-                logger.error("Failed to parse OpenRouter models JSON")
-                await MainActor.run { 
-                    self.openRouterModels = []
-                    self.saveOpenRouterModels()
-                    self.objectWillChange.send()
-                }
-                return
-            }
-            
-            let models = dataArray.compactMap { $0["id"] as? String }
-            await MainActor.run { 
-                self.openRouterModels = models.sorted()
-                self.saveOpenRouterModels() // Save to UserDefaults
+            let models = try await OpenRouterClient.fetchModels()
+            await MainActor.run {
+                self.openRouterModels = models
+                self.saveOpenRouterModels()
                 if self.selectedProvider == .openRouter && self.currentModel == self.selectedProvider.defaultModel && !models.isEmpty {
-                    self.selectModel(models.sorted().first!)
+                    self.selectModel(models.first!)
                 }
                 self.objectWillChange.send()
             }
-            logger.info("Successfully fetched \(models.count) OpenRouter models.")
-            
         } catch {
-            logger.error("Error fetching OpenRouter models: \(error.localizedDescription)")
-            await MainActor.run { 
+            await MainActor.run {
                 self.openRouterModels = []
                 self.saveOpenRouterModels()
                 self.objectWillChange.send()
             }
         }
-
     }
 }
 

@@ -4,128 +4,160 @@ import UniformTypeIdentifiers
 struct EnhancementSettingsView: View {
     @EnvironmentObject private var enhancementService: AIEnhancementService
     @State private var isEditingPrompt = false
-    @State private var isSettingsExpanded = true
+    @State private var isShowingSettings = false
     @State private var selectedPromptForEdit: CustomPrompt?
-    
+    @State private var panelID = UUID()
+
+    private let panelWidth: CGFloat = 400
+
+    private enum PanelType {
+        case promptEditor
+        case settings
+    }
+
+    private var activePanel: PanelType? {
+        if isShowingSettings { return .settings }
+        if isEditingPrompt || selectedPromptForEdit != nil { return .promptEditor }
+        return nil
+    }
+
+    private var isPanelOpen: Bool {
+        activePanel != nil
+    }
+
+    private func openPromptPanel() {
+        isShowingSettings = false
+        panelID = UUID()
+    }
+
+    private func closePanel() {
+        withAnimation(.smooth(duration: 0.3)) {
+            isEditingPrompt = false
+            selectedPromptForEdit = nil
+            isShowingSettings = false
+        }
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 32) {
-                // Main Settings Sections
-                VStack(spacing: 24) {
-                    // Enable/Disable Toggle Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Enable Enhancement")
-                                        .font(.headline)
-                                    
-                                    InfoTip(
-                                        title: "AI Enhancement",
-                                        message: "AI enhancement lets you pass the transcribed audio through LLMS to post-process using different prompts suitable for different use cases like e-mails, summary, writing, etc.",
-                                        learnMoreURL: "https://www.youtube.com/@tryvoiceink/videos"
-                                    )
-                                }
-                                
-                                Text("Turn on AI-powered enhancement features")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            Toggle("", isOn: $enhancementService.isEnhancementEnabled)
-                                .toggleStyle(SwitchToggleStyle(tint: .blue))
-                                .labelsHidden()
-                                .scaleEffect(1.2)
-                        }
-                        
-                        HStack(spacing: 20) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Toggle("Clipboard Context", isOn: $enhancementService.useClipboardContext)
-                                    .toggleStyle(.switch)
-                                    .disabled(!enhancementService.isEnhancementEnabled)
-                                Text("Use text from clipboard to understand the context")
-                                    .font(.caption)
-                                    .foregroundColor(enhancementService.isEnhancementEnabled ? .secondary : .secondary.opacity(0.5))
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Toggle("Context Awareness", isOn: $enhancementService.useScreenCaptureContext)
-                                    .toggleStyle(.switch)
-                                    .disabled(!enhancementService.isEnhancementEnabled)
-                                Text("Learn what is on the screen to understand the context")
-                                    .font(.caption)
-                                    .foregroundColor(enhancementService.isEnhancementEnabled ? .secondary : .secondary.opacity(0.5))
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(CardBackground(isSelected: false))
-                    
-                    // 1. AI Provider Integration Section
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("AI Provider Integration")
-                            .font(.headline)
-                        
-                        APIKeyManagementView()
-                    }
-                    .padding()
-                    .background(CardBackground(isSelected: false))
-                    
-                    // 3. Enhancement Modes & Assistant Section
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Enhancement Prompt")
-                            .font(.headline)
-                        
-                        // Reorderable prompts grid with drag-and-drop
-                        ReorderablePromptGrid(
-                            selectedPromptId: enhancementService.selectedPromptId,
-                            onPromptSelected: { prompt in
-                                enhancementService.setActivePrompt(prompt)
-                            },
-                            onEditPrompt: { prompt in
-                                selectedPromptForEdit = prompt
-                            },
-                            onDeletePrompt: { prompt in
-                                enhancementService.deletePrompt(prompt)
-                            },
-                            onAddNewPrompt: {
-                                isEditingPrompt = true
-                            }
+        Form {
+            Section {
+                Toggle(isOn: $enhancementService.isEnhancementEnabled) {
+                    HStack(spacing: 4) {
+                        Text("Enable Enhancement")
+                        InfoTip(
+                            "AI enhancement lets you pass the transcribed audio through LLMs to post-process using different prompts suitable for different use cases like e-mails, summary, writing, etc.",
+                            learnMoreURL: "https://tryvoiceink.com/docs/enhancements-configuring-models"
                         )
                     }
-                    .padding()
-                    .background(CardBackground(isSelected: false))
-                    
-                    EnhancementShortcutsSection()
+                }
+                .toggleStyle(.switch)
+            } header: {
+                HStack {
+                    Text("General")
+                    Spacer()
+                    Button {
+                        withAnimation(.smooth(duration: 0.3)) {
+                            isEditingPrompt = false
+                            selectedPromptForEdit = nil
+                            isShowingSettings.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "gear")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(isShowingSettings ? .accentColor : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Enhancement settings")
                 }
             }
-            .padding(24)
+
+            APIKeyManagementView()
+                .opacity(enhancementService.isEnhancementEnabled ? 1.0 : 0.8)
+
+            Section {
+                ReorderablePromptGrid(
+                    selectedPromptId: enhancementService.selectedPromptId,
+                    onPromptSelected: { prompt in
+                        enhancementService.setActivePrompt(prompt)
+                    },
+                    onEditPrompt: { prompt in
+                        openPromptPanel()
+                        withAnimation(.smooth(duration: 0.3)) {
+                            selectedPromptForEdit = prompt
+                        }
+                    },
+                    onDeletePrompt: { prompt in
+                        enhancementService.deletePrompt(prompt)
+                    }
+                )
+                .padding(.vertical, 8)
+            } header: {
+                HStack {
+                    Text("Enhancement Prompts")
+                    Spacer()
+                    Button {
+                        openPromptPanel()
+                        withAnimation(.smooth(duration: 0.3)) {
+                            isEditingPrompt = true
+                        }
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 18))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Add new prompt")
+                }
+            }
+            .opacity(enhancementService.isEnhancementEnabled ? 1.0 : 0.8)
         }
-        .frame(minWidth: 600, minHeight: 500)
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .background(Color(NSColor.controlBackgroundColor))
-        .sheet(isPresented: $isEditingPrompt) {
-            PromptEditorView(mode: .add)
+        .slidingPanel(isPresented: .init(
+            get: { isPanelOpen },
+            set: { newValue in
+                if !newValue { closePanel() }
+            }
+        ), width: panelWidth) {
+            Group {
+                switch activePanel {
+                case .settings:
+                    EnhancementSettingsPanel(onDismiss: closePanel)
+                case .promptEditor:
+                    Group {
+                        if let prompt = selectedPromptForEdit {
+                            PromptEditorView(mode: .edit(prompt)) {
+                                closePanel()
+                            }
+                        } else if isEditingPrompt {
+                            PromptEditorView(mode: .add) {
+                                closePanel()
+                            }
+                        }
+                    }
+                    .id(panelID)
+                case nil:
+                    EmptyView()
+                }
+            }
         }
-        .sheet(item: $selectedPromptForEdit) { prompt in
-            PromptEditorView(mode: .edit(prompt))
-        }
+        .frame(minWidth: 500, minHeight: 400)
     }
 }
 
-// MARK: - Drag & Drop Reorderable Grid
+// MARK: - Reorderable Grid
 private struct ReorderablePromptGrid: View {
     @EnvironmentObject private var enhancementService: AIEnhancementService
-    
+
     let selectedPromptId: UUID?
     let onPromptSelected: (CustomPrompt) -> Void
     let onEditPrompt: ((CustomPrompt) -> Void)?
     let onDeletePrompt: ((CustomPrompt) -> Void)?
-    let onAddNewPrompt: (() -> Void)?
-    
+
     @State private var draggingItem: CustomPrompt?
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if enhancementService.customPrompts.isEmpty {
@@ -136,7 +168,7 @@ private struct ReorderablePromptGrid: View {
                 let columns = [
                     GridItem(.adaptive(minimum: 80, maximum: 100), spacing: 36)
                 ]
-                
+
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(enhancementService.customPrompts) { prompt in
                         prompt.promptIcon(
@@ -174,32 +206,18 @@ private struct ReorderablePromptGrid: View {
                             )
                         )
                     }
-                    
-                    if let onAddNewPrompt = onAddNewPrompt {
-                        CustomPrompt.addNewButton {
-                            onAddNewPrompt()
-                        }
-                        .help("Add new prompt")
-                        .onDrop(
-                            of: [UTType.text],
-                            delegate: PromptEndDropDelegate(
-                                prompts: $enhancementService.customPrompts,
-                                draggingItem: $draggingItem
-                            )
-                        )
-                    }
                 }
                 .padding(.vertical, 12)
                 .padding(.horizontal, 16)
-                
+
                 HStack {
                     Image(systemName: "info.circle")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
                     Text("Double-click to edit • Right-click for more options")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 }
                 .padding(.top, 8)
                 .padding(.horizontal, 16)
@@ -208,18 +226,17 @@ private struct ReorderablePromptGrid: View {
     }
 }
 
-// MARK: - Drop Delegates
+// MARK: - Drop Delegate
 private struct PromptDropDelegate: DropDelegate {
     let item: CustomPrompt
     @Binding var prompts: [CustomPrompt]
     @Binding var draggingItem: CustomPrompt?
-    
+
     func dropEntered(info: DropInfo) {
         guard let draggingItem = draggingItem, draggingItem != item else { return }
         guard let fromIndex = prompts.firstIndex(of: draggingItem),
               let toIndex = prompts.firstIndex(of: item) else { return }
-        
-        // Move item as you hover for immediate visual update
+
         if prompts[toIndex].id != draggingItem.id {
             withAnimation(.easeInOut(duration: 0.12)) {
                 let from = fromIndex
@@ -228,36 +245,13 @@ private struct PromptDropDelegate: DropDelegate {
             }
         }
     }
-    
+
     func dropUpdated(info: DropInfo) -> DropProposal? {
         DropProposal(operation: .move)
     }
-    
+
     func performDrop(info: DropInfo) -> Bool {
         draggingItem = nil
-        return true
-    }
-}
-
-private struct PromptEndDropDelegate: DropDelegate {
-    @Binding var prompts: [CustomPrompt]
-    @Binding var draggingItem: CustomPrompt?
-    
-    func validateDrop(info: DropInfo) -> Bool { true }
-    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
-    
-    func performDrop(info: DropInfo) -> Bool {
-        guard let draggingItem = draggingItem,
-              let currentIndex = prompts.firstIndex(of: draggingItem) else {
-            self.draggingItem = nil
-            return false
-        }
-        
-        // Move to end if dropped on the trailing "Add New" tile
-        withAnimation(.easeInOut(duration: 0.12)) {
-            prompts.move(fromOffsets: IndexSet(integer: currentIndex), toOffset: prompts.endIndex)
-        }
-        self.draggingItem = nil
         return true
     }
 }

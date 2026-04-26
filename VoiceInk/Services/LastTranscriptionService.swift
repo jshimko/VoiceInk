@@ -67,10 +67,9 @@ class LastTranscriptionService: ObservableObject {
         }
         
         let textToPaste = lastTranscription.text
-        
-        // Delay to give the user time to release modifier keys (especially Control)
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            CursorPaster.pasteAtCursor(textToPaste + " ")
+            CursorPaster.pasteAtCursor(textToPaste)
         }
     }
     
@@ -94,13 +93,12 @@ class LastTranscriptionService: ObservableObject {
             }
         }()
 
-        // Delay to allow modifier keys to be released
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            CursorPaster.pasteAtCursor(textToPaste + " ")
+            CursorPaster.pasteAtCursor(textToPaste)
         }
     }
     
-    static func retryLastTranscription(from modelContext: ModelContext, whisperState: WhisperState) {
+    static func retryLastTranscription(from modelContext: ModelContext, transcriptionModelManager: TranscriptionModelManager, serviceRegistry: TranscriptionServiceRegistry, enhancementService: AIEnhancementService?) {
         Task { @MainActor in
             guard let lastTranscription = getLastTranscription(from: modelContext),
                   let audioURLString = lastTranscription.audioFileURL,
@@ -112,22 +110,26 @@ class LastTranscriptionService: ObservableObject {
                 )
                 return
             }
-            
-            guard let currentModel = whisperState.currentTranscriptionModel else {
+
+            guard let currentModel = transcriptionModelManager.currentTranscriptionModel else {
                 NotificationManager.shared.showNotification(
                     title: "No transcription model selected",
                     type: .error
                 )
                 return
             }
-            
-            let transcriptionService = AudioTranscriptionService(modelContext: modelContext, whisperState: whisperState)
+
+            let transcriptionService = AudioTranscriptionService(
+                modelContext: modelContext,
+                serviceRegistry: serviceRegistry,
+                enhancementService: enhancementService
+            )
             do {
                 let newTranscription = try await transcriptionService.retranscribeAudio(from: audioURL, using: currentModel)
-                
+
                 let textToCopy = newTranscription.enhancedText?.isEmpty == false ? newTranscription.enhancedText! : newTranscription.text
                 ClipboardManager.copyToClipboard(textToCopy)
-                
+
                 NotificationManager.shared.showNotification(
                     title: "Copied to clipboard",
                     type: .success

@@ -1,12 +1,15 @@
 import SwiftUI
+import SwiftData
 
 struct DictionarySettingsView: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedSection: DictionarySection = .replacements
+    @State private var isShowingSettings = false
     let whisperPrompt: WhisperPrompt
     
     enum DictionarySection: String, CaseIterable {
         case replacements = "Word Replacements"
-        case spellings = "Correct Spellings"
+        case spellings = "Vocabulary"
         
         var description: String {
             switch self {
@@ -36,36 +39,27 @@ struct DictionarySettingsView: View {
         }
         .frame(minWidth: 600, minHeight: 500)
         .background(Color(NSColor.controlBackgroundColor))
+        .slidingPanel(isPresented: $isShowingSettings, width: 400) {
+            DictionarySettingsPanel {
+                withAnimation(.smooth(duration: 0.3)) {
+                    isShowingSettings = false
+                }
+            }
+        }
     }
     
     private var heroSection: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "brain.filled.head.profile")
-                .font(.system(size: 40))
-                .foregroundStyle(.blue)
-                .padding(20)
-                .background(Circle()
-                    .fill(Color(.windowBackgroundColor).opacity(0.9))
-                    .shadow(color: .black.opacity(0.1), radius: 10, y: 5))
-
-            VStack(spacing: 8) {
-                Text("Dictionary Settings")
-                    .font(.system(size: 28, weight: .bold))
-                Text("Enhance VoiceInk's transcription accuracy by teaching it your vocabulary")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 400)
-            }
-        }
-        .padding(.vertical, 40)
-        .frame(maxWidth: .infinity)
+        CompactHeroSection(
+            icon: "brain.filled.head.profile",
+            title: "Dictionary Settings",
+            description: "Enhance VoiceInk's transcription accuracy by teaching it your vocabulary",
+            maxDescriptionWidth: 500
+        )
     }
     
     private var mainContent: some View {
         VStack(spacing: 40) {
             sectionSelector
-            
             selectedSectionContent
         }
         .padding(.horizontal, 32)
@@ -81,27 +75,17 @@ struct DictionarySettingsView: View {
 
                 Spacer()
 
-                HStack(spacing: 12) {
-                    Button(action: {
-                        DictionaryImportExportService.shared.importDictionary()
-                    }) {
-                        Image(systemName: "square.and.arrow.down")
-                            .font(.system(size: 18))
-                            .foregroundColor(.blue)
+                Button {
+                    withAnimation(.smooth(duration: 0.3)) {
+                        isShowingSettings.toggle()
                     }
-                    .buttonStyle(.plain)
-                    .help("Import dictionary items and word replacements")
-
-                    Button(action: {
-                        DictionaryImportExportService.shared.exportDictionary()
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 18))
-                            .foregroundColor(.blue)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Export dictionary items and word replacements")
+                } label: {
+                    Image(systemName: "gear")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(isShowingSettings ? .accentColor : .secondary)
                 }
+                .buttonStyle(.plain)
+                .help("Dictionary settings")
             }
 
             HStack(spacing: 20) {
@@ -120,7 +104,7 @@ struct DictionarySettingsView: View {
         VStack(alignment: .leading, spacing: 20) {
             switch selectedSection {
             case .spellings:
-                DictionaryView(whisperPrompt: whisperPrompt)
+                VocabularyView(whisperPrompt: whisperPrompt)
                     .background(CardBackground(isSelected: false))
             case .replacements:
                 WordReplacementView()

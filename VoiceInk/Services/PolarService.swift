@@ -2,8 +2,8 @@ import Foundation
 import IOKit
 import os
 
-/// Analytics and license validation service that communicates with Polar.sh API
-/// This service is conditionally enabled based on the EnableAnalytics feature flag.
+/// Analytics and license validation service that communicates with Polar.sh API.
+/// Conditionally enabled via the `enableAnalytics` feature flag in Fork.plist.
 class PolarService {
     private let config = AppConfig.shared
 
@@ -12,12 +12,7 @@ class PolarService {
         config.analyticsOrganizationID ?? "Org"
     }
 
-    private var apiToken: String {
-        config.analyticsAPIToken ?? "Token"
-    }
-
     private var baseURL: String {
-        // Allow custom base URL if needed
         if let url = config.licenseValidationURL, !url.isEmpty {
             return url
         }
@@ -31,18 +26,16 @@ class PolarService {
         config.enableAnalytics
     }
 
-    // Create an authenticated URLRequest for the given endpoint
-    private func createAuthenticatedRequest(endpoint: String, method: String = "POST") -> URLRequest? {
-        // Return nil if analytics is disabled
+    /// Build a request for the given customer-portal endpoint, or nil when analytics is disabled.
+    private func createRequest(endpoint: String, method: String = "POST") -> URLRequest? {
         guard isEnabled else {
-            logger.debug("PolarService: Analytics disabled via configuration")
+            logger.debug("PolarService: analytics disabled via configuration")
             return nil
         }
 
         let url = URL(string: "\(baseURL)\(endpoint)")!
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return request
     }
@@ -71,7 +64,7 @@ class PolarService {
     }
 
     struct LicenseKeyInfo: Codable {
-        let limit_activations: Int
+        let limit_activations: Int?
         let status: String
     }
 
@@ -82,10 +75,11 @@ class PolarService {
 
     // Check if a license key requires activation
     func checkLicenseRequiresActivation(_ key: String) async throws -> (isValid: Bool, requiresActivation: Bool, activationsLimit: Int?) {
-        guard var request = createAuthenticatedRequest(endpoint: "/v1/license-keys/validate") else {
-            // Analytics disabled - always return valid license
+        guard var request = createRequest(endpoint: "/v1/customer-portal/license-keys/validate") else {
+            // Analytics disabled — treat license as valid without server roundtrip
             return (isValid: true, requiresActivation: false, activationsLimit: nil)
         }
+
         let body: [String: Any] = [
             "key": key,
             "organization_id": organizationId
@@ -98,20 +92,20 @@ class PolarService {
         if let httpResponse = httpResponse as? HTTPURLResponse {
             if !(200...299).contains(httpResponse.statusCode) {
                 let errorMsg = String(data: data, encoding: .utf8) ?? "Unknown error"
-                logger.notice("🔑 License validation failed [HTTP \(httpResponse.statusCode)]: \(errorMsg, privacy: .public)")
-                throw LicenseError.validationFailed(errorMsg)
+                logger.error("🔑 License validation failed [HTTP \(httpResponse.statusCode)]: \(errorMsg, privacy: .public)")
+                switch httpResponse.statusCode {
+                case 404: throw LicenseError.keyNotFound
+                default:  throw LicenseError.serverError(httpResponse.statusCode)
+                }
             }
         }
 
-        // Log successful response
         let rawResponse = String(data: data, encoding: .utf8) ?? "Unable to decode response"
         let statusCode = (httpResponse as? HTTPURLResponse)?.statusCode ?? 0
         logger.notice("🔑 License validation success [HTTP \(statusCode)]: \(rawResponse, privacy: .public)")
 
         let validationResponse = try JSONDecoder().decode(LicenseValidationResponse.self, from: data)
         let isValid = validationResponse.status == "granted"
-
-        // If limit_activations is nil or 0, the license doesn't require activation
         let requiresActivation = (validationResponse.limit_activations ?? 0) > 0
 
         return (isValid: isValid, requiresActivation: requiresActivation, activationsLimit: validationResponse.limit_activations)
@@ -119,10 +113,11 @@ class PolarService {
 
     // Activate a license key on this device
     func activateLicenseKey(_ key: String) async throws -> (activationId: String, activationsLimit: Int) {
-        guard var request = createAuthenticatedRequest(endpoint: "/v1/license-keys/activate") else {
-            // Analytics disabled - return dummy activation
+        guard var request = createRequest(endpoint: "/v1/customer-portal/license-keys/activate") else {
+            // Analytics disabled — return dummy activation so callers can proceed
             return (activationId: "dummy-activation-id", activationsLimit: 0)
         }
+
         let deviceId = getDeviceIdentifier()
         let hostname = Host.current().localizedName ?? "Unknown Mac"
 
@@ -140,35 +135,31 @@ class PolarService {
         if let httpResponse = httpResponse as? HTTPURLResponse {
             if !(200...299).contains(httpResponse.statusCode) {
                 let errorMsg = String(data: data, encoding: .utf8) ?? "Unknown error"
-                logger.notice("🔑 License activation failed [HTTP \(httpResponse.statusCode)]: \(errorMsg, privacy: .public)")
-
-                // Check for specific error messages
-                if errorMsg.contains("activation limit") || errorMsg.contains("maximum activations") {
-                    throw LicenseError.activationLimitReached(errorMsg)
+                logger.error("🔑 License activation failed [HTTP \(httpResponse.statusCode)]: \(errorMsg, privacy: .public)")
+                switch httpResponse.statusCode {
+                case 404: throw LicenseError.keyNotFound
+                case 403: throw LicenseError.activationLimitReached
+                default:  throw LicenseError.serverError(httpResponse.statusCode)
                 }
-                if errorMsg.contains("License key does not require activation") {
-                    throw LicenseError.activationNotRequired
-                }
-                throw LicenseError.activationFailed(errorMsg)
             }
         }
 
-        // Log successful response
         let rawResponse = String(data: data, encoding: .utf8) ?? "Unable to decode response"
         let statusCode = (httpResponse as? HTTPURLResponse)?.statusCode ?? 0
         logger.notice("🔑 License activation success [HTTP \(statusCode)]: \(rawResponse, privacy: .public)")
 
         let activationResult = try JSONDecoder().decode(ActivationResult.self, from: data)
 
-        return (activationId: activationResult.id, activationsLimit: activationResult.license_key.limit_activations)
+        return (activationId: activationResult.id, activationsLimit: activationResult.license_key.limit_activations ?? 0)
     }
 
     // Validate a license key with an activation ID
     func validateLicenseKeyWithActivation(_ key: String, activationId: String) async throws -> Bool {
-        guard var request = createAuthenticatedRequest(endpoint: "/v1/license-keys/validate") else {
-            // Analytics disabled - always return valid
+        guard var request = createRequest(endpoint: "/v1/customer-portal/license-keys/validate") else {
+            // Analytics disabled — treat as valid
             return true
         }
+
         let body: [String: Any] = [
             "key": key,
             "organization_id": organizationId,
@@ -182,12 +173,14 @@ class PolarService {
         if let httpResponse = httpResponse as? HTTPURLResponse {
             if !(200...299).contains(httpResponse.statusCode) {
                 let errorMsg = String(data: data, encoding: .utf8) ?? "Unknown error"
-                logger.notice("🔑 License validation with activation failed [HTTP \(httpResponse.statusCode)]: \(errorMsg, privacy: .public)")
-                throw LicenseError.validationFailed(errorMsg)
+                logger.error("🔑 License validation with activation failed [HTTP \(httpResponse.statusCode)]: \(errorMsg, privacy: .public)")
+                switch httpResponse.statusCode {
+                case 404: throw LicenseError.keyNotFound
+                default:  throw LicenseError.serverError(httpResponse.statusCode)
+                }
             }
         }
 
-        // Log successful response
         let rawResponse = String(data: data, encoding: .utf8) ?? "Unable to decode response"
         let statusCode = (httpResponse as? HTTPURLResponse)?.statusCode ?? 0
         logger.notice("🔑 License validation with activation success [HTTP \(statusCode)]: \(rawResponse, privacy: .public)")
@@ -197,43 +190,26 @@ class PolarService {
         return validationResponse.status == "granted"
     }
 
-    // MARK: - Analytics Methods
+    // MARK: - Analytics Methods (no-ops when analytics disabled)
 
     func trackAppLaunch() {
         guard isEnabled else { return }
-        // Implementation for tracking app launches
         logger.debug("Analytics: App launch tracked")
     }
 
     func trackFeatureUsage(_ feature: String) {
         guard isEnabled else { return }
-        // Implementation for tracking feature usage
         logger.debug("Analytics: Feature usage tracked - \(feature)")
     }
 
     func trackError(_ error: String) {
         guard isEnabled else { return }
-        // Implementation for tracking errors
         logger.debug("Analytics: Error tracked - \(error)")
     }
 }
 
-enum LicenseError: Error, LocalizedError {
-    case activationFailed(String)
-    case validationFailed(String)
-    case activationLimitReached(String)
-    case activationNotRequired
-
-    var errorDescription: String? {
-        switch self {
-        case .activationFailed(let details):
-            return "Failed to activate license: \(details)"
-        case .validationFailed(let details):
-            return "License validation failed: \(details)"
-        case .activationLimitReached(let details):
-            return "Activation limit reached: \(details)"
-        case .activationNotRequired:
-            return "This license does not require activation."
-        }
-    }
+enum LicenseError: Error {
+    case keyNotFound             // 404 - key doesn't exist in this org
+    case activationLimitReached  // 403 - device limit hit
+    case serverError(Int)        // unexpected HTTP status
 }
