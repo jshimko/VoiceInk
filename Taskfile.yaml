@@ -283,6 +283,51 @@ tasks:
       - task: build:debug
       - cmd: open "{{.BUILD_DIR}}/Build/Products/Debug/{{.PROJECT_NAME}}.app"
 
+  build:local:
+    desc: Build with ad-hoc signing (no Apple Developer cert required)
+    summary: |
+      Builds Debug using LocalBuild.xcconfig with ad-hoc codesigning.
+      Output is copied to ~/Downloads/VoiceInk.app.
+
+      Mirrors `make local`. Use this when you don't have a provisioning
+      profile set up — the LOCAL_BUILD compile flag activates the
+      #if LOCAL_BUILD branches in KeychainService.swift and
+      LicenseViewModel.swift.
+
+      Limitations:
+        - No iCloud dictionary sync
+        - No automatic updates
+    cmds:
+      - cmd: rm -rf ./.local-build
+      - cmd: |
+          xcodebuild -project {{.PROJECT_FILE}} -scheme {{.SCHEME}} -configuration Debug \
+            -derivedDataPath ./.local-build \
+            -xcconfig LocalBuild.xcconfig \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM="" \
+            CODE_SIGN_ENTITLEMENTS="$(pwd)/VoiceInk/VoiceInk.local.entitlements" \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) LOCAL_BUILD' \
+            build
+      - cmd: |
+          APP_PATH="./.local-build/Build/Products/Debug/{{.PROJECT_NAME}}.app"
+          if [ -d "$APP_PATH" ]; then
+            rm -rf "$HOME/Downloads/{{.PROJECT_NAME}}.app"
+            ditto "$APP_PATH" "$HOME/Downloads/{{.PROJECT_NAME}}.app"
+            xattr -cr "$HOME/Downloads/{{.PROJECT_NAME}}.app"
+            echo "{{.GREEN}}✓ Built and copied to ~/Downloads/{{.PROJECT_NAME}}.app{{.NC}}"
+            echo "  Run with: open ~/Downloads/{{.PROJECT_NAME}}.app"
+          else
+            echo "{{.RED}}✗ Build output not found at $APP_PATH{{.NC}}"
+            exit 1
+          fi
+    preconditions:
+      - sh: test -f LocalBuild.xcconfig
+        msg: "LocalBuild.xcconfig not found at project root"
+      - sh: test -f VoiceInk/VoiceInk.local.entitlements
+        msg: "VoiceInk/VoiceInk.local.entitlements not found"
+
   # ============================================================================
   # Test Tasks
   # ============================================================================
@@ -299,7 +344,7 @@ tasks:
         - task test:filter   - Run specific tests
 
       Example:
-        task test:filter -- --filter WhisperState
+        task test:filter -- --filter VoiceInkEngine
     cmds:
       - cmd: "{{.SCRIPTS_DIR}}/run-tests.sh --type all"
         ignore_error: false
@@ -365,7 +410,7 @@ tasks:
         task test:filter -- --filter <pattern>
 
       Examples:
-        task test:filter -- --filter WhisperState
+        task test:filter -- --filter VoiceInkEngine
         task test:filter -- --filter "AI.*Service"
     cmds:
       - cmd: "{{.SCRIPTS_DIR}}/run-tests.sh {{.CLI_ARGS}}"
@@ -389,6 +434,42 @@ tasks:
     preconditions:
       - sh: command -v entr
         msg: "entr is not installed. Install with: brew install entr"
+
+  test:fork:
+    desc: Run fork configuration tests
+    summary: |
+      Runs ConfigurationTests and FeatureFlagTests, which verify
+      Fork.plist loading, AppConfig defaults, and feature-flag gating.
+    cmds:
+      - cmd: '{{.SCRIPTS_DIR}}/run-tests.sh --filter "Configuration|FeatureFlag"'
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/run-tests.sh
+        msg: "Test script not found"
+
+  test:features:
+    desc: Run feature-flag tests
+    summary: |
+      Runs FeatureFlagTests, which verify conditional feature enablement
+      based on Fork.plist values.
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/run-tests.sh --filter FeatureFlag"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/run-tests.sh
+        msg: "Test script not found"
+
+  test:integration:
+    desc: Run integration tests
+    summary: |
+      Runs IntegrationTests, which exercise end-to-end workflows
+      and service interactions.
+    cmds:
+      - cmd: "{{.SCRIPTS_DIR}}/run-tests.sh --filter Integration"
+        ignore_error: false
+    preconditions:
+      - sh: test -f {{.SCRIPTS_DIR}}/run-tests.sh
+        msg: "Test script not found"
 
   # ============================================================================
   # Clean Tasks
@@ -728,6 +809,24 @@ tasks:
   # ============================================================================
 
   dev:
+    desc: Build and watch for changes (requires entr)
+    summary: |
+      Watches Swift sources and rebuilds Debug on every change.
+      Requires `entr` (brew install entr).
+
+      To open the project in Xcode instead, use: task dev:xcode
+    cmds:
+      - cmd: |
+          if ! command -v entr &> /dev/null; then
+            echo "{{.RED}}entr is not installed. Install with: brew install entr{{.NC}}"
+            exit 1
+          fi
+          find {{.SOURCE_DIR}} -name "*.swift" | entr -c task build:debug
+    preconditions:
+      - sh: command -v entr
+        msg: "entr is not installed. Install with: brew install entr"
+
+  dev:xcode:
     desc: Open project in Xcode
     summary: |
       Opens the VoiceInk project in Xcode.
@@ -847,11 +946,26 @@ tasks:
             echo "{{.RED}}✗ Git not found{{.NC}}"
           fi
 
-          # Check Whisper framework
-          if [ -d "{{.WHISPER_DIR}}/build-apple/whisper.xcframework" ]; then
-            echo "{{.GREEN}}✓ Whisper.xcframework found{{.NC}}"
-          else
-            echo "{{.YELLOW}}⚠ Whisper.xcframework not built (run: task setup:whisper){{.NC}}"
+          # Check Whisper framework (project accepts three paths)
+          WHISPER_PATHS=(
+            "{{.WHISPER_DIR}}/build-apple/whisper.xcframework"
+            "../build-apple/whisper.xcframework"
+            "$HOME/VoiceInk-Dependencies/whisper.cpp/build-apple/whisper.xcframework"
+          )
+          WHISPER_FOUND=false
+          for path in "${WHISPER_PATHS[@]}"; do
+            if [ -d "$path" ]; then
+              echo "{{.GREEN}}✓ Whisper.xcframework found:{{.NC}} $path"
+              WHISPER_FOUND=true
+              break
+            fi
+          done
+          if [ "$WHISPER_FOUND" = false ]; then
+            echo "{{.YELLOW}}⚠ Whisper.xcframework not found in any of:{{.NC}}"
+            for path in "${WHISPER_PATHS[@]}"; do
+              echo "    $path"
+            done
+            echo "{{.YELLOW}}  Run: task setup:whisper{{.NC}}"
           fi
 
           # Check code signing
