@@ -1,5 +1,7 @@
 # VoiceInk Development Guide for AI Agents
 
+> **Last verified**: 2026-04-26 against commit `02d063c`
+
 ## Purpose
 
 VoiceInk is a native macOS voice-to-text application that provides accurate, privacy-focused transcription with AI enhancement capabilities. This is a **configurable fork** with privacy-by-default settings, where all external communication is optional and controlled via configuration. This directory contains the complete Swift/SwiftUI application source code.
@@ -9,31 +11,33 @@ VoiceInk is a native macOS voice-to-text application that provides accurate, pri
 Voice transcription and text processing application for macOS, featuring:
 
 - Real-time voice recording and transcription
-- Multiple transcription backends (local Whisper, cloud services, native Apple)
-- AI-powered text enhancement and formatting
-- Context-aware Power Mode for automatic configuration
+- Multiple transcription backends (local Whisper, FluidAudio/Parakeet, native Apple Speech, plus 8+ cloud providers)
+- AI-powered text enhancement and formatting (cloud LLMs + local Ollama)
+- Context-aware Power Mode for automatic per-app configuration
 - Privacy-first design with 100% offline capability
-- **Fully configurable fork architecture** - customize branding, URLs, and features
-- **Privacy-by-default** - all external services are opt-in via configuration
+- Custom vocabulary and word replacement post-processing
+- **Fully configurable fork architecture** — customize branding, URLs, and features
+- **Privacy-by-default** — all external services are opt-in via configuration
 
 ## Dependencies
 
-- **Internal**: Core modules are self-contained within VoiceInk/
+- **Internal**: Core modules are self-contained within `VoiceInk/`.
 - **Build Tools**:
-  - Taskfile (build automation - `brew install go-task`)
+  - Taskfile (build automation — `brew install go-task`) — recommended
+  - Make (alternative, simpler — no extra install)
   - Xcode 15+ (Swift compiler and toolchain)
-- **External Frameworks**:
-  - whisper.xcframework (speech recognition)
-  - Sparkle (auto-updates - **optional**, controlled via config)
+- **Swift Package dependencies** (resolved by Xcode/SPM):
+  - whisper.xcframework (local Whisper transcription, built from `whisper.cpp`)
+  - FluidAudio (Parakeet model support — formerly bundled as a separate service)
+  - Sparkle (auto-updates — **optional**, gated by `EnableAutoUpdates`)
   - KeyboardShortcuts (global hotkeys)
-  - FluidAudio (Parakeet model support)
   - MediaRemoteAdapter (media playback control)
   - LaunchAtLogin (startup management)
-  - SelectedTextKit (text selection extraction)
+  - SelectedTextKit (text selection extraction from active apps)
 
 ## Dependents
 
-This is the main application - no internal dependents.
+This is the main application — no internal dependents.
 
 ---
 
@@ -41,35 +45,37 @@ This is the main application - no internal dependents.
 
 ### NEVER Modify Without Coordination:
 
-- **WhisperState.swift**: Central state management - changes affect entire app
-- **VoiceInk.swift**: App initialization - incorrect changes break startup
-- **Info.plist**: App permissions - wrong values crash the app
-- **Model migrations**: SwiftData schema changes require migration code
-- **AppConfig.swift**: Central configuration singleton - affects app identity and features
-- **Fork.plist**: Fork configuration - controls all feature flags and external URLs
-- **Taskfile.yaml**: Build system configuration - affects all build/test/release processes
+- **`VoiceInk/Transcription/Engine/VoiceInkEngine.swift`**: Central recording/transcription engine — changes affect the entire recording pipeline
+- **`VoiceInk/VoiceInk.swift`**: App initialization and dependency-injection chain — incorrect changes break startup
+- **`VoiceInk/Info.plist`**: App permissions — wrong values crash the app
+- **SwiftData schema** (`Transcription`, `VocabularyWord`, `WordReplacement` models): schema changes require migration code; the dictionary store also has CloudKit configuration (see `VoiceInk.swift:191-219`)
+- **`VoiceInk/AppConfig.swift`**: Central configuration singleton — affects app identity and feature gating
+- **`Fork.plist`**: Fork configuration — controls all feature flags and external URLs (gitignored)
+- **`Taskfile.yaml`** and **`Makefile`**: Build system configuration — affects all build/test/release flows
+- **`VoiceInk.entitlements` / `VoiceInk.local.entitlements`**: Capabilities — wrong values break sandboxing or signing
 
 ### ALWAYS Follow These Rules:
 
-- **State Management**: Use @Published properties in ObservableObject classes
-- **UI Updates**: All UI changes must be on @MainActor
-- **Audio Handling**: Check microphone permissions before recording
-- **File Operations**: Use Application Support directory for user data
-- **Error Handling**: Use Logger for debugging, show user-friendly messages
-- **Memory Management**: Clean up audio files and transcriptions per user settings
+- **State Management**: Use `@Published` properties on `ObservableObject` classes; expose via `@EnvironmentObject` from `VoiceInkApp`.
+- **UI Updates**: All UI mutations must be on `@MainActor`.
+- **Audio Handling**: Check microphone permissions before recording (`AVCaptureDevice.authorizationStatus(for: .audio)`).
+- **File Operations**: Use the per-fork Application Support directory (`AppConfig.shared.applicationSupportPath`) for user data — never the shared default.
+- **Error Handling**: Use `Logger(subsystem: AppConfig.shared.loggerSubsystem, category: "Feature")`; show user-friendly alerts for user-facing failures.
+- **Memory Management**: Clean up audio files and transcriptions per user settings (`IsAudioCleanupEnabled`, `IsTranscriptionCleanupEnabled`).
+- **Bundle identifiers**: Always derive from `AppConfig.shared.mainBundleIdentifier` rather than hardcoding `com.voiceink.VoiceInk` — fork bundle IDs vary.
 
 ### Performance Requirements:
 
-- Transcription must start within 100ms of recording stop
-- UI must remain responsive during transcription
-- Memory usage should not exceed 500MB during normal operation
+- Transcription must start within 100ms of recording stop.
+- UI must remain responsive during transcription.
+- Memory usage should not exceed ~500MB during normal operation.
 
 ### Security Requirements:
 
-- NEVER send audio data to cloud without explicit user consent
-- API keys must be stored in Keychain, not UserDefaults
-- Obfuscate sensitive data in logs
-- Validate all user input before processing
+- NEVER send audio data to cloud without explicit user consent.
+- API keys must be stored in Keychain (`KeychainService.swift`), not UserDefaults.
+- Obfuscate sensitive data in logs (`Obfuscator.swift`).
+- Validate all user input before processing.
 
 ---
 
@@ -77,22 +83,32 @@ This is the main application - no internal dependents.
 
 ### High-Level Design Pattern
 
-**MVVM + Service Layer Architecture**
+**MVVM + Service Layer + Engine Pipeline**
 
 ```
-Views (SwiftUI) → ViewModels (@StateObject) → Services → External APIs/Frameworks
-                                ↓
-                        Models (SwiftData)
+Views (SwiftUI) ─► EnvironmentObjects (VoiceInkEngine, *ModelManager, AIEnhancementService)
+                       │
+                       ▼
+         VoiceInkEngine ─► Recorder → TranscriptionService (registry) ─► Pipeline (post-processing)
+                       │                       │                                   │
+                       ▼                       ▼                                   ▼
+                  RecorderUIManager     Whisper / FluidAudio /         WordReplacement / Vocabulary /
+                                        Cloud / Native providers       Filler-word filtering / Enhancement
+                       │
+                       ▼
+                  Models (SwiftData: Transcription, VocabularyWord, WordReplacement)
 ```
+
+`VoiceInkEngine` owns the recording lifecycle and orchestrates the transcription pipeline. The provider implementation is pluggable through `TranscriptionService` (protocol) and selected via `TranscriptionModelManager` based on the user's choice in settings.
 
 ### Key Design Decisions
 
-1. **Why SwiftUI over AppKit**: Modern declarative UI, better state management
-2. **Why SwiftData over Core Data**: Simpler API, Swift-native, type-safe
-3. **Why Service Layer**: Separation of concerns, testability, multiple backend support
-4. **Why ObservableObject pattern**: SwiftUI integration, reactive updates
-5. **Why Fork Configuration System**: Enable customization without code changes, privacy-by-default
-6. **Why Conditional Compilation**: Optional features (Sparkle) without forcing dependencies
+1. **SwiftUI over AppKit**: declarative UI, better state management.
+2. **SwiftData over Core Data**: simpler API, Swift-native, type-safe; uses two stores (`default.store` for transcriptions, `dictionary.store` for vocabulary/replacements).
+3. **Service + Engine layering**: `VoiceInkEngine` is the central orchestrator; individual `*Service` and `*Manager` classes are narrow and DI-injected.
+4. **Pluggable transcription providers**: each provider conforms to `TranscriptionService` and is dispatched via `TranscriptionServiceRegistry`.
+5. **Fork Configuration System**: enables customization without code changes, privacy-by-default.
+6. **Conditional compilation**: optional features (Sparkle, CloudKit-syncing dictionary) without forcing dependencies; `LOCAL_BUILD` flag disables CloudKit for ad-hoc-signed builds.
 
 ---
 
@@ -101,157 +117,209 @@ Views (SwiftUI) → ViewModels (@StateObject) → Services → External APIs/Fra
 ### Configuration Architecture
 
 ```
-Fork.plist → AppConfig.swift (Singleton) → UI Components & Services
-                    ↓
-            Feature Flags & URLs
+Fork.plist ─► AppConfig.swift (Singleton) ─► UI Components & Services
+                       │
+                       └─► Feature Flags & URLs
 ```
 
 ### How It Works
 
-1. **Fork.plist**: Your organization's configuration (gitignored)
-2. **Fork.plist.template**: Template for configuration (tracked in git)
-3. **AppConfig.swift**: Singleton that reads and provides configuration
-4. **UI Components**: Conditionally render based on configuration flags
+1. **`Fork.plist`** — your organization's configuration (gitignored).
+2. **`Fork.plist.template`** — template for configuration (tracked in git).
+3. **`AppConfig.swift`** — singleton that reads the plist on launch and exposes typed properties.
+4. **UI Components & Services** — conditionally render or initialize based on configuration flags.
 
 ### Key Configuration Options
 
-| Configuration             | Purpose                                       | Default                |
-| ------------------------- | --------------------------------------------- | ---------------------- |
-| `BundleIdentifierPrefix`  | Your org's bundle ID (e.g., `com.yourdomain`) | `com.voiceink`         |
-| `SupportEmail`            | User support email                            | `support@voiceink.app` |
-| `EnableAutoUpdates`       | Enable Sparkle auto-updates                   | `false`                |
-| `EnableLicenseValidation` | Enable license checking                       | `false`                |
-| `EnableAnnouncements`     | Enable announcement service                   | `false`                |
-| `EnableAnalytics`         | Enable usage analytics                        | `false`                |
-| `ShowPurchaseOptions`     | Show purchase UI                              | `false`                |
-| `ShowCommunityLinks`      | Show community links                          | `false`                |
+| Configuration             | Purpose                                              | Default                |
+| ------------------------- | ---------------------------------------------------- | ---------------------- |
+| `BundleIdentifierPrefix`  | Your org's bundle ID prefix (e.g. `com.yourdomain`)  | `com.voiceink`         |
+| `AppName`                 | User-facing app name                                 | `VoiceInk`             |
+| `SupportEmail`            | User support email                                   | `support@voiceink.app` |
+| `LoggerSubsystem`         | OSLog subsystem prefix for app logs                  | `<prefix>.voiceink`    |
+| `EnableAutoUpdates`       | Initialize Sparkle + check for updates               | `false`                |
+| `EnableLicenseValidation` | Run license-check logic (otherwise: always licensed) | `false`                |
+| `EnableAnnouncements`     | Fetch in-app announcements                           | `false`                |
+| `EnableAnalytics`         | Send Polar analytics events                          | `false`                |
+| `ShowPurchaseOptions`     | Show purchase UI                                     | `false`                |
+| `ShowCommunityLinks`      | Show community/Discord links                         | `false`                |
+| `ShowDonationLink`        | Show donation/tip-jar link                           | `false`                |
+| `WebsiteURL` / `DocsURL` / `DiscordURL` / `PurchaseURL` / `DonationURL` / `ChangelogURL` / `LicensePortalURL` | Optional public URLs | `nil` |
+| `SparkleUpdateURL` / `LicenseValidationURL` / `AnnouncementsURL` | Service endpoints (only used if matching flag is true) | `nil` |
+| `AnalyticsAPIToken` / `AnalyticsOrganizationID` | Polar analytics credentials | `nil` |
+
+`AppConfig` also exposes computed helpers: `mainBundleIdentifier`, `testsBundleIdentifier`, `uiTestsBundleIdentifier`, `applicationSupportPath`, `modelsDirectory`, `hasAnyCommunityLinks`, `shouldShowLicensingUI`.
 
 ---
 
 ## Build System
 
-### Taskfile Integration
+Two parallel build interfaces are supported. Pick one:
 
-The project uses **Taskfile** for unified build automation:
+### 1. Taskfile (recommended for active development)
 
 ```bash
-# One-time setup
+# One-time install
 brew install go-task
 
-# Common tasks
-task --list           # Show all available tasks
-task setup           # Complete project setup
-task build           # Build debug version
-task build:open      # Build and launch app
-task test            # Run all tests
-task release         # Create release build
-task install         # Install locally built app
-task clean           # Clean build artifacts
+# Most-used tasks
+task --list           # full list (47 tasks)
+task setup            # full project setup (env check + whisper + project)
+task build            # debug build
+task build:open       # debug build + launch app
+task build:local      # ad-hoc-signed build (no Apple Developer cert required)
+task test             # run all tests
+task release          # release build
+task install          # build + install to /Applications
+task clean            # clean build artifacts
+task dev              # build and watch for changes
+task dev:xcode        # open project in Xcode
+task doctor           # diagnose common issues
 ```
+
+Task groups also exist for `setup:*`, `build:*`, `test:*` (`unit`, `ui`, `coverage`, `filter`, `watch`, `fork`, `features`, `integration`), `clean:*` (`deep`, `full`, `whisper`), `release:*` (`dmg`, `notarize`, `version`), `reset:*` (`all`, `data`, `transcriptions`, `models`, `preferences`), and CI helpers (`ci`, `ci:quick`).
+
+The Taskfile expects `whisper.cpp` cloned as a sibling at `../whisper.cpp` (built into `whisper.xcframework`).
+
+### 2. Makefile (alternative, simpler — no extra dependencies)
+
+```bash
+make           # all (= setup + build)
+make whisper   # clone/build whisper.xcframework
+make build     # debug build
+make local     # ad-hoc-signed build to ~/Downloads/VoiceInk.app (no cert)
+make run       # launch built app
+make dev       # build + run
+make clean     # remove build artifacts and dependencies
+make help      # list targets
+```
+
+The Makefile manages dependencies in `~/VoiceInk-Dependencies/whisper.cpp/` (different from the Taskfile's `../whisper.cpp` — the two systems are independent).
+
+### 3. Local (unsigned) builds
+
+`LocalBuild.xcconfig` + `VoiceInk/VoiceInk.local.entitlements` provide an ad-hoc-signed configuration that skips iCloud/CloudKit entitlements and APS push, so contributors without an Apple Developer account can build and run the app. Triggered via `task build:local` or `make local`. The build sets the `LOCAL_BUILD` Swift compilation flag, which (e.g.) disables CloudKit syncing on the dictionary store in `VoiceInk.swift`.
+
+### 4. Canonical reference
+
+See `BUILDING.md` (project root) for the authoritative end-to-end build guide; `docs/build.md` may exist as a long-form reference.
 
 ### Build Configurations
 
-- **Debug**: Development build with debug symbols
-- **Release**: Optimized production build
-- **Fork**: Custom build with your Fork.plist configuration
+- **Debug**: development build with debug symbols.
+- **Release**: optimized production build.
+- **Local**: ad-hoc-signed; no CloudKit, no Sparkle pull (depends on Fork.plist), uses `VoiceInk.local.entitlements`.
+- **Fork-customized**: any of the above with a custom `Fork.plist`.
 
 ---
 
 ## Established Patterns
 
-### Pattern: Service Initialization
+### Pattern: Service Initialization & DI
 
-- **When to use**: Creating any new service class
-- **Implementation**: Initialize in VoiceInkApp.swift, pass via dependency injection
-- **Example**:
+- **When to use**: creating any new service that should be available across the app.
+- **Implementation**: instantiate in `VoiceInkApp.init()`, wrap in `StateObject`, expose to views via `.environmentObject(...)`.
+- **Example** (real fragment from `VoiceInk/VoiceInk.swift:96-104`):
 
 ```swift
 let aiService = AIService()
 _aiService = StateObject(wrappedValue: aiService)
+
+let updaterViewModel = UpdaterViewModel()
+_updaterViewModel = StateObject(wrappedValue: updaterViewModel)
+
+let enhancementService = AIEnhancementService(aiService: aiService, modelContext: container.mainContext)
+_enhancementService = StateObject(wrappedValue: enhancementService)
 ```
 
-- **File**: VoiceInk/VoiceInk.swift:62-63
+The full DI chain in `VoiceInk.swift:96-177` builds (in order): `AIService` → `AIEnhancementService` → model managers (`WhisperModelManager`, `FluidAudioModelManager`, `TranscriptionModelManager`) → `RecorderUIManager` → `VoiceInkEngine` → `HotkeyManager` / `MenuBarManager` / `ActiveWindowService` / `ModelPrewarmService`. Circular references between `VoiceInkEngine` and `RecorderUIManager` are wired up explicitly after construction.
 
 ### Pattern: View State Management
 
-- **When to use**: Managing view-specific state
-- **Implementation**: Use @StateObject for owned objects, @ObservedObject for injected
+- **When to use**: managing view-specific state.
+- **Implementation**: `@StateObject` for owned objects, `@EnvironmentObject` for app-wide services injected from `VoiceInkApp`.
 - **Example**:
 
 ```swift
-@StateObject private var whisperState: WhisperState
-@ObservedObject var enhancementService: AIEnhancementService
+@EnvironmentObject var engine: VoiceInkEngine
+@EnvironmentObject var enhancementService: AIEnhancementService
+@StateObject private var localViewModel = SomeFeatureViewModel()
 ```
-
-- **File**: VoiceInk/Views/ContentView.swift
 
 ### Pattern: Async Operations
 
-- **When to use**: Network calls, file I/O, transcription
-- **Implementation**: Use Swift async/await with Task
+- **When to use**: network calls, file I/O, transcription, model loading.
+- **Implementation**: Swift `async`/`await` with `Task { ... }` for fire-and-forget from synchronous contexts.
 - **Example**:
 
 ```swift
 Task {
-   await whisperState.transcribeAudio(fileURL: url)
+    await engine.toggleRecord(powerModeId: detectedPowerModeId)
 }
 ```
 
-- **File**: VoiceInk/Whisper/WhisperState.swift
+### Pattern: Fork Configuration Lookup
 
-### Pattern: Fork Configuration
-
-- **When to use**: Customizing app for different organizations or deployments
-- **Implementation**: Edit Fork.plist, AppConfig reads and provides values
+- **When to use**: gating any feature, URL, or service tied to fork identity.
+- **Implementation**: read `AppConfig.shared` rather than hardcoding identifiers or URLs.
 - **Example**:
 
 ```swift
-// In AppConfig.swift
 let config = AppConfig.shared
 if config.enableAutoUpdates {
     // Initialize Sparkle
 }
-
-// In UI components
-if AppConfig.shared.showPurchaseOptions {
+if config.showPurchaseOptions {
     PurchaseView()
 }
 ```
 
-- **Files**: Fork.plist, VoiceInk/AppConfig.swift
+### Pattern: Feature Flag Early Return
 
-### Pattern: Feature Flags
-
-- **When to use**: Conditionally enabling/disabling features
-- **Implementation**: Define in Fork.plist, check via AppConfig
-- **Example**:
+- **When to use**: disabling external-service code paths cleanly.
+- **Implementation**: short-circuit at the top of the function so disabled state is the simplest path.
+- **Example** (`VoiceInk/Models/LicenseViewModel.swift:44-53`):
 
 ```swift
-if AppConfig.shared.enableLicenseValidation {
-    // Original license logic
-} else {
-    // Operate as fully licensed
-    licenseState = .licensed
+private func loadLicenseState() {
+    guard config.enableLicenseValidation else {
+        // License validation disabled — operate as fully licensed.
+        licenseState = .licensed
+        if let storedLicenseKey = licenseManager.licenseKey {
+            self.licenseKey = storedLicenseKey
+        }
+        return
+    }
+    // …real validation logic…
 }
 ```
 
-- **File**: VoiceInk/Models/LicenseViewModel.swift:37-77
-
 ### Pattern: Power Mode UI Flag Initialization
 
-- **When to use**: App initialization for feature flags that depend on user data
-- **Implementation**: Check UserDefaults, set default based on existing configuration
-- **Example**:
+- **When to use**: bootstrapping a UI feature flag whose default depends on existing user data.
+- **Implementation**: check whether the key is unset, then derive a default from user state.
+- **Example** (`VoiceInk/VoiceInk.swift:49-52`):
 
 ```swift
-// In VoiceInkApp.init()
 if UserDefaults.standard.object(forKey: "powerModeUIFlag") == nil {
     let hasEnabledPowerModes = PowerModeManager.shared.configurations.contains { $0.isEnabled }
     UserDefaults.standard.set(hasEnabledPowerModes, forKey: "powerModeUIFlag")
 }
 ```
 
-- **File**: VoiceInk/VoiceInk.swift:36-40
+### Pattern: Logger Subsystem
+
+- **Implementation**: always derive the subsystem from the fork config so log filtering works per-fork.
+
+```swift
+private let logger = Logger(subsystem: AppConfig.shared.loggerSubsystem, category: "VoiceInkEngine")
+```
+
+### Pattern: Word Replacement & Vocabulary
+
+- **When to use**: post-transcription text mutations from the user's custom dictionary.
+- **Implementation**: `WordReplacementService` (`VoiceInk/Transcription/Processing/WordReplacementService.swift`) reads the `WordReplacement` SwiftData model and rewrites transcripts inside the pipeline. Replacements are sorted longest-first to handle overlapping patterns; matching uses `(?<![a-zA-Z0-9])…(?![a-zA-Z0-9])` lookarounds rather than `\b` so punctuation works correctly. Vocabulary terms (`VocabularyWord`) are surfaced to providers as a hint string.
+- **Schema note**: vocabulary and replacements live in a separate `dictionary.store` (see `VoiceInk.swift:202-219`) which optionally syncs via CloudKit when not built with `LOCAL_BUILD`.
 
 ---
 
@@ -259,185 +327,292 @@ if UserDefaults.standard.object(forKey: "powerModeUIFlag") == nil {
 
 ### Before Starting
 
-1. Check current git status: `git status`
-2. Verify Xcode project builds: `Cmd+B`
-3. Run existing tests: `Cmd+U`
+1. Check git status: `git status`.
+2. Verify the project builds: `task build` (or `Cmd+B` in Xcode).
+3. Run existing tests: `task test` (or `Cmd+U`).
 4. Related files that often change together:
-   - WhisperState.swift + Recorder.swift (recording changes)
-   - AIService.swift + AIEnhancementService.swift (AI features)
-   - Views/ + Models/ (UI changes)
-   - ParakeetTranscriptionService.swift + WhisperState+Parakeet.swift (Parakeet model changes)
-   - SelectedTextService.swift + SelectedTextKit (text selection changes)
+   - `VoiceInk/Transcription/Engine/VoiceInkEngine.swift` + `VoiceInk/Recorder.swift` + `VoiceInk/CoreAudioRecorder.swift` (recording changes)
+   - `VoiceInk/Services/AIEnhancement/AIService.swift` + `AIEnhancementService.swift` (AI features)
+   - `VoiceInk/Views/` + `VoiceInk/Models/` (UI changes)
+   - `VoiceInk/Transcription/FluidAudio/FluidAudioTranscriptionService.swift` + `FluidAudioModelManager.swift` (Parakeet/FluidAudio model changes)
+   - `VoiceInk/Services/SelectedTextService.swift` + SelectedTextKit (text-selection extraction)
+   - `VoiceInk/Transcription/Processing/WordReplacementService.swift` + `VoiceInk/Models/WordReplacement.swift` (custom-dictionary changes)
 
 ### During Development
 
-- Use existing patterns from: VoiceInk/Services/ for new services
-- Follow conventions in: VoiceInk/Views/ for UI components
-- Performance considerations: Profile with Instruments for memory/CPU
+- New services → follow patterns in `VoiceInk/Services/` (or `VoiceInk/Services/AIEnhancement/` for AI-tier services).
+- New transcription providers → add to `VoiceInk/Transcription/Cloud/` or `VoiceInk/Transcription/Native/` and conform to the protocol in `VoiceInk/Transcription/Engine/TranscriptionService.swift`.
+- New UI → follow conventions in `VoiceInk/Views/`.
+- Profile with Instruments (Time Profiler, Allocations) for memory/CPU work.
 - Security checklist:
-  ✓ API keys in Keychain
-  ✓ Permissions checked
-  ✓ User data encrypted
-  ✓ No sensitive data in logs
+  - ✓ API keys in Keychain via `KeychainService`/`APIKeyManager`
+  - ✓ Permissions checked before use
+  - ✓ User data stored under `AppConfig.shared.applicationSupportPath`
+  - ✓ No sensitive data in logs (use `Obfuscator`)
 
 ### Testing Requirements
 
-- Unit tests required for: All Service classes, Model logic
-- UI tests required for: Main user flows, settings changes
-- Test file naming: \*Tests.swift in VoiceInkTests/
-- Coverage requirement: 70% for new code
-- Run tests: `Cmd+U` in Xcode
+- Unit tests required for: all `*Service` classes and model logic.
+- UI tests required for: main user flows, settings changes.
+- Test file naming: `*Tests.swift` in `VoiceInkTests/`; UI tests in `VoiceInkUITests/`.
+- Coverage target: 70% for new code.
+- Run tests: `task test` (CLI) or `Cmd+U` (Xcode).
 
 ---
 
 ## Directory Structure
 
 ```
-VoiceInk/
-├── Fork.plist                  # Fork configuration (gitignored)
-├── Fork.plist.template         # Configuration template
-├── Taskfile.yaml               # Build automation configuration
-├── VoiceInk/                   # Main application source
-│   ├── AppDelegate.swift      # macOS app lifecycle
-│   ├── VoiceInk.swift         # Main app entry point
-│   ├── AppConfig.swift        # Configuration singleton
-│   ├── AppIntents/            # Shortcuts app integration
-│   ├── Models/                # Data models and ViewModels
-│   │   ├── Transcription.swift    # Core data model
-│   │   ├── AIPrompts.swift        # AI prompt templates
-│   │   └── LicenseViewModel.swift # License management
-│   ├── Views/                 # SwiftUI views
-│   │   ├── ContentView.swift     # Main window
-│   │   ├── AI Models/            # Model management UI
-│   │   └── Common/               # Reusable components
-│   ├── Services/              # Business logic layer
-│   │   ├── AIService.swift                    # AI provider management
-│   │   ├── TranscriptionService.swift         # Transcription interface
-│   │   ├── ParakeetTranscriptionService.swift # Parakeet local transcription
-│   │   ├── SelectedTextService.swift          # Text selection extraction
-│   │   ├── PolarService.swift                 # Analytics (optional)
-│   │   └── CloudTranscription/                # Cloud provider implementations
-│   ├── PowerMode/             # Context-aware features
-│   │   ├── PowerModeView.swift   # Configuration UI
-│   │   └── ActiveWindowService.swift # App detection
-│   ├── Whisper/               # Local transcription
-│   │   ├── WhisperState.swift    # Central state management
-│   │   └── WhisperContext.swift  # Whisper.cpp wrapper
-│   ├── Resources/             # Assets and resources
-│   └── Notifications/         # In-app notifications
-├── VoiceInkTests/             # Unit tests
-│   ├── ConfigurationTests.swift  # Fork configuration tests
-│   ├── FeatureFlagTests.swift    # Feature flag tests
-│   ├── IntegrationTests.swift    # Integration tests
-│   └── MigrationTests.swift      # Migration tests
-├── scripts/                   # Build and automation scripts
-│   ├── setup-fork.sh          # Interactive fork setup
-│   ├── setup-project.sh       # Project setup
-│   ├── build-app.sh           # App building
-│   ├── build-whisper.sh       # Whisper framework build
-│   ├── run-tests.sh           # Test runner
-│   ├── create-release.sh      # Release creation
-│   └── install.sh             # Local installation
-├── docs/                      # Documentation
-│   ├── FORK_GUIDE.md          # Fork configuration guide
-│   ├── build.md               # Build instructions
-│   ├── API_REFERENCE.md       # API documentation
-│   ├── ARCHITECTURE.md        # Architecture overview
-│   ├── MIGRATION.md           # Migration guides
-│   └── PRIVACY_AUDIT.md       # Privacy analysis
-└── .gitignore                 # Includes Fork.plist
+VoiceInk/                          (repo root)
+├── BUILDING.md                    # canonical build guide
+├── CLAUDE.md                      # this file
+├── CODE_OF_CONDUCT.md
+├── CONTRIBUTING.md                # NB: PRs to upstream are not accepted
+├── Fork.plist                     # fork configuration (gitignored)
+├── Fork.plist.template            # configuration template
+├── LICENSE
+├── LocalBuild.xcconfig            # ad-hoc signing config for `make local` / `task build:local`
+├── Makefile                       # alternative build interface (no `task` dependency)
+├── README.md
+├── Taskfile.yaml                  # primary build automation (47 tasks)
+├── VoiceInk.xcodeproj/
+├── VoiceInk/                      # main application source
+│   ├── AppConfig.swift            # configuration singleton
+│   ├── AppDefaults.swift          # UserDefaults registration
+│   ├── AppDelegate.swift          # macOS app lifecycle
+│   ├── ClipboardManager.swift
+│   ├── CoreAudioRecorder.swift    # low-level audio capture
+│   ├── CursorPaster.swift         # paste injection at cursor
+│   ├── CustomSoundManager.swift   # custom start/stop sounds
+│   ├── EmailSupport.swift
+│   ├── HistoryWindowController.swift
+│   ├── HotkeyManager.swift        # global hotkey wiring (KeyboardShortcuts)
+│   ├── Info.plist
+│   ├── MediaController.swift      # MediaRemoteAdapter integration (pause/resume music)
+│   ├── MenuBarManager.swift
+│   ├── MiniRecorderShortcutManager.swift
+│   ├── PlaybackController.swift
+│   ├── Recorder.swift             # high-level recording controller
+│   ├── SoundManager.swift
+│   ├── VoiceInk.entitlements      # full entitlements (signed builds)
+│   ├── VoiceInk.local.entitlements# stripped entitlements (ad-hoc builds)
+│   ├── VoiceInk.swift             # @main app entry, DI chain, SwiftData container
+│   ├── WindowManager.swift
+│   ├── AppIntents/                # Shortcuts.app integration
+│   ├── Assets.xcassets/
+│   ├── Models/                    # data models and view models
+│   │   ├── Transcription.swift             # core SwiftData model
+│   │   ├── VocabularyWord.swift            # custom-vocabulary entry
+│   │   ├── WordReplacement.swift           # find/replace rule
+│   │   ├── AudioFileQueueItem.swift
+│   │   ├── AIPrompts.swift                 # AI prompt definitions
+│   │   ├── PredefinedPrompts.swift
+│   │   ├── PromptTemplates.swift
+│   │   ├── CustomPrompt.swift
+│   │   ├── LanguageDictionary.swift
+│   │   ├── LicenseViewModel.swift
+│   │   ├── TranscriptionModel.swift        # provider/model abstraction
+│   │   └── TranscriptionModelRegistry.swift
+│   ├── Notifications/             # in-app notification surface
+│   │   ├── AppNotifications.swift          # central Notification.Name extension
+│   │   ├── NotificationManager.swift
+│   │   └── …
+│   ├── PowerMode/                 # context-aware per-app config
+│   │   ├── PowerModeView.swift
+│   │   ├── PowerModeConfig.swift
+│   │   ├── PowerModeManager.swift
+│   │   ├── PowerModeShortcutManager.swift
+│   │   └── ActiveWindowService.swift
+│   ├── Resources/                 # bundled assets
+│   ├── Services/                  # narrow business-logic services
+│   │   ├── AIEnhancement/
+│   │   │   ├── AIService.swift                 # AI provider management/selection
+│   │   │   └── AIEnhancementService.swift      # text enhancement pipeline
+│   │   ├── SelectedTextService.swift           # active-app selection extraction (SelectedTextKit)
+│   │   ├── PolarService.swift                  # analytics (gated by EnableAnalytics)
+│   │   ├── AnnouncementsService.swift          # gated by EnableAnnouncements
+│   │   ├── APIKeyManager.swift / KeychainService.swift
+│   │   ├── LicenseManager.swift
+│   │   ├── AudioFileTranscriptionService.swift
+│   │   ├── AudioFileTranscriptionManager.swift
+│   │   ├── AutoLearnVocabularyService.swift
+│   │   ├── CustomVocabularyService.swift / DictionaryService.swift
+│   │   ├── ImportExportService.swift / VoiceInkCSVExportService.swift
+│   │   ├── LastTranscriptionService.swift
+│   │   ├── ModelPrewarmService.swift
+│   │   ├── OllamaService.swift
+│   │   ├── PromptDetectionService.swift
+│   │   ├── ScreenCaptureService.swift
+│   │   ├── Obfuscator.swift / LogExporter.swift / SystemInfoService.swift
+│   │   ├── StreamingKeysMigration.swift
+│   │   ├── SupportedMedia.swift / SystemArchitecture.swift
+│   │   ├── TranscriptionAutoCleanupService.swift
+│   │   ├── UserDefaultsManager.swift
+│   │   ├── AudioDeviceManager.swift / AudioDeviceConfiguration.swift
+│   │   └── WordCounter.swift / WordDiffEngine.swift
+│   ├── Transcription/             # transcription pipeline & providers
+│   │   ├── Engine/                # central engine + protocol surface
+│   │   │   ├── VoiceInkEngine.swift            # central recording/transcription orchestrator
+│   │   │   ├── VoiceInkEngine+Protocols.swift / VoiceInkEngineError.swift
+│   │   │   ├── RecordingState.swift
+│   │   │   ├── RecorderUIManager.swift         # owns mini/notch recorder UI lifecycle
+│   │   │   ├── TranscriptionService.swift      # protocol all providers conform to
+│   │   │   ├── TranscriptionServiceRegistry.swift
+│   │   │   ├── TranscriptionPipeline.swift     # post-processing chain
+│   │   │   ├── TranscriptionSession.swift
+│   │   │   ├── TranscriptionModelManager.swift
+│   │   │   └── AudioFileProcessor.swift
+│   │   ├── Cloud/                 # cloud provider implementations
+│   │   │   ├── CloudProvider.swift / CloudTranscriptionService.swift / CustomCloudModelManager.swift
+│   │   │   ├── DeepgramProvider.swift, ElevenLabsProvider.swift, GeminiProvider.swift,
+│   │   │   ├── GroqProvider.swift, MistralProvider.swift, SonioxProvider.swift,
+│   │   │   ├── SpeechmaticsProvider.swift, XAIProvider.swift,
+│   │   │   └── OpenAICompatibleTranscriptionService.swift
+│   │   ├── Whisper/               # local whisper.cpp integration
+│   │   │   ├── WhisperTranscriptionService.swift
+│   │   │   ├── WhisperModelManager.swift / WhisperModelProvider.swift
+│   │   │   ├── WhisperModelWarmupCoordinator.swift / WhisperPrompt.swift
+│   │   │   ├── VADModelManager.swift
+│   │   │   └── LibWhisper.swift                # whisper.cpp Swift wrapper
+│   │   ├── FluidAudio/            # Parakeet (FluidAudio SDK) implementation
+│   │   │   ├── FluidAudioTranscriptionService.swift
+│   │   │   └── FluidAudioModelManager.swift
+│   │   ├── Native/                # macOS native Speech framework
+│   │   ├── Processing/            # post-processing services
+│   │   │   └── WordReplacementService.swift
+│   │   └── Streaming/             # streaming-mode transcription
+│   └── Views/                     # SwiftUI views
+│       ├── ContentView.swift                   # main window
+│       ├── MenuBarView.swift / EnhancementSettingsView.swift / ModelSettingsView.swift
+│       ├── KeyboardShortcutView.swift / PermissionsView.swift
+│       ├── LicenseView.swift / LicenseManagementView.swift
+│       ├── PromptEditorView.swift / PredefinedPromptsView.swift
+│       ├── AudioTranscribeView.swift / AudioPlayerView.swift / AudioFileRow.swift
+│       ├── TranscriptionResultView.swift / MetricsView.swift
+│       ├── AI Models/                          # model selection / management UI
+│       │   ├── ModelCardView.swift             # base card
+│       │   ├── WhisperModelCardView.swift / CloudModelCardView.swift
+│       │   ├── FluidAudioModelCardView.swift / NativeModelCardView.swift
+│       │   ├── CustomModelCardView.swift / AddCustomModelView.swift
+│       │   ├── APIKeyManagementView.swift / LanguageSelectionView.swift
+│       │   └── ModelManagementView.swift
+│       ├── Common/ Components/ Dictionary/ History/ Metrics/ Onboarding/ Recorder/ Settings/
+├── VoiceInkTests/                 # unit tests
+│   ├── ConfigurationTests.swift   # Fork.plist loading & defaults
+│   ├── FeatureFlagTests.swift     # feature flag behavior
+│   ├── IntegrationTests.swift     # end-to-end workflows
+│   ├── MigrationTests.swift       # SwiftData migration & data upgrades
+│   └── VoiceInkTests.swift        # base/helper tests
+├── VoiceInkUITests/               # UI tests
+│   ├── VoiceInkUITests.swift
+│   └── VoiceInkUITestsLaunchTests.swift
+├── docs/                          # long-form documentation
+│   ├── API_REFERENCE.md
+│   ├── ARCHITECTURE.md
+│   ├── build.md
+│   ├── FORK_GUIDE.md
+│   ├── MIGRATION.md
+│   └── PRIVACY_AUDIT.md
+├── scripts/                       # build/automation scripts
+│   ├── setup-environment.sh       # validate macOS/Xcode/git/disk
+│   ├── setup-fork.sh              # interactive Fork.plist generator
+│   ├── setup-project.sh           # full project setup orchestrator
+│   ├── build-app.sh               # configurable build wrapper
+│   ├── build-whisper.sh           # builds whisper.xcframework
+│   ├── clean-build.sh             # tiered clean (normal / deep / full)
+│   ├── create-release.sh          # release builds + DMG + notarization
+│   ├── install.sh                 # install to /Applications
+│   ├── reset-data.sh              # reset user data (all/data/transcriptions/models/preferences)
+│   └── run-tests.sh               # test runner with coverage/filtering
+├── specs/                         # in-flight feature specs
+│   └── audio-visualization-enhancement.md
+├── .github/                       # GitHub metadata
+│   ├── ISSUE_TEMPLATE/{bug_report,feature_request}.md
+│   └── PULL_REQUEST_TEMPLATE.md
+└── .gitignore                     # includes Fork.plist
 ```
 
 ## File Naming Conventions
 
-- Views: \*View.swift (e.g., SettingsView.swift)
-- Services: *Service.swift or *Manager.swift
-- Models: Singular nouns (e.g., Transcription.swift)
-- ViewModels: \*ViewModel.swift
-- Tests: \*Tests.swift
+- Views: `*View.swift` (e.g. `SettingsView.swift`)
+- Services: `*Service.swift` or `*Manager.swift`
+- Transcription providers: `<Vendor>Provider.swift` or `<Vendor>TranscriptionService.swift`
+- Models: singular nouns (e.g. `Transcription.swift`)
+- ViewModels: `*ViewModel.swift`
+- Tests: `*Tests.swift`
 
 ---
 
 ## Core APIs & Interfaces
 
-### API: WhisperState.toggleRecord()
+### API: `VoiceInkEngine.toggleRecord(powerModeId:)`
 
-- **Purpose**: Start/stop audio recording
-- **Parameters**: None (async)
-- **Returns**: Nothing
-- **Throws**: Recording errors propagated
-- **Usage Pattern**:
+- **Purpose**: start/stop the recording + transcription pipeline.
+- **Signature**: `func toggleRecord(powerModeId: UUID? = nil) async`
+- **File**: `VoiceInk/Transcription/Engine/VoiceInkEngine.swift:80`
+- **Usage**:
 
-```swift
-Task { await whisperState.toggleRecord() }
-```
+  ```swift
+  @EnvironmentObject var engine: VoiceInkEngine
+  Task { await engine.toggleRecord() }
+  ```
+- **Don't**: call without first ensuring microphone permission; don't bypass and drive the underlying `Recorder` directly.
 
-- **Don't**: Call without checking permissions first
+### API: `AIEnhancementService.enhance(_:)`
 
-### API: AIService.enhanceText()
+- **Purpose**: enhance transcribed text with the currently selected AI prompt.
+- **Signature**: `func enhance(_ text: String) async throws -> (String, TimeInterval, String?)` (returns enhanced text, duration, and resolved prompt name)
+- **File**: `VoiceInk/Services/AIEnhancement/AIEnhancementService.swift:368`
+- **Usage**: prompt selection is via the service's `selectedPromptId` property — do not pass the prompt as an argument.
+- **Don't**: call without an AI provider configured; don't confuse with `AIService` (which manages providers, not enhancement).
 
-- **Purpose**: Enhance transcribed text with AI
-- **Parameters**: text: String, prompt: String
-- **Returns**: Enhanced text String
-- **Throws**: Network/API errors
-- **Usage Pattern**: Use with selected AI provider
-- **Don't**: Call without API key configured
+### API: `AIService`
 
-### API: TranscriptionService.transcribe()
+- **Purpose**: provider selection and credential management for AI providers (Groq, Gemini, Claude, OpenAI-compatible, Ollama, etc.).
+- **File**: `VoiceInk/Services/AIEnhancement/AIService.swift`
+- **Usage pattern**: inject into `AIEnhancementService`; query for available providers and currently selected one. Don't call enhancement-style methods on it.
 
-- **Purpose**: Convert audio to text
-- **Parameters**: audioURL: URL
-- **Returns**: Transcribed text
-- **Throws**: Transcription errors
-- **Usage Pattern**: Implement protocol for new providers
-- **Don't**: Process files > 25MB without chunking
+### API: `TranscriptionService` (protocol)
 
-### API: ParakeetTranscriptionService.loadModel()
+- **Purpose**: the abstraction every transcription backend conforms to.
+- **Signature**: `func transcribe(audioURL: URL, model: any TranscriptionModel) async throws -> String`
+- **File**: `VoiceInk/Transcription/Engine/TranscriptionService.swift:5-13`
+- **Usage**: implement for new providers, register with `TranscriptionServiceRegistry`.
+- **Don't**: assume the audio file fits in memory — providers stream as needed.
 
-- **Purpose**: Load a specific Parakeet model version (v2 or v3)
-- **Parameters**: model: ParakeetModel
-- **Returns**: Nothing (async)
-- **Throws**: ASR initialization errors
-- **Usage Pattern**:
+### API: `FluidAudioTranscriptionService.loadModel(for:)`
 
-```swift
-let service = ParakeetTranscriptionService()
-try await service.loadModel(for: parakeetModel)
-```
+- **Purpose**: load a specific FluidAudio (Parakeet) model variant.
+- **Signature**: `func loadModel(for model: FluidAudioModel) async throws`
+- **File**: `VoiceInk/Transcription/FluidAudio/FluidAudioTranscriptionService.swift:74`
+- **Usage**:
 
-- **Don't**: Call transcribe() without loading model first
-- **Breaking Change**: Now requires ParakeetModel parameter (previously took no parameters)
+  ```swift
+  let service = FluidAudioTranscriptionService()
+  try await service.loadModel(for: fluidAudioModel)
+  let transcript = try await service.transcribe(audioURL: url, model: fluidAudioModel)
+  ```
+- **Don't**: call `transcribe` before `loadModel` — the service maintains an active-version state and switches/cleans up between variants.
 
-### API: SelectedTextService.fetchSelectedText()
+### API: `FluidAudioModelManager.showFluidAudioModelInFinder(_:)`
 
-- **Purpose**: Fetch currently selected text from active application
-- **Parameters**: None
-- **Returns**: Optional String with selected text (async)
-- **Throws**: No throws, returns nil on failure
-- **Usage Pattern**:
+- **Purpose**: open Finder to the cached FluidAudio model location.
+- **Signature**: `func showFluidAudioModelInFinder(_ model: FluidAudioModel)`
+- **File**: `VoiceInk/Transcription/FluidAudio/FluidAudioModelManager.swift:102`
 
-```swift
-if let text = await SelectedTextService.fetchSelectedText() {
-    // Process selected text
-}
-```
+### API: `SelectedTextService.fetchSelectedText()`
 
-- **Don't**: Use clipboard manipulation directly
-- **Breaking Change**: Changed from synchronous clipboard access to async SelectedTextKit integration
+- **Purpose**: read currently selected text from the active application.
+- **Signature**: `static func fetchSelectedText() async -> String?`
+- **File**: `VoiceInk/Services/SelectedTextService.swift`
+- **Usage**:
 
-### API: WhisperState.showParakeetModelInFinder()
-
-- **Purpose**: Open Finder to show cached Parakeet model location
-- **Parameters**: model: ParakeetModel
-- **Returns**: Nothing
-- **Throws**: Nothing
-- **Usage Pattern**:
-
-```swift
-whisperState.showParakeetModelInFinder(parakeetModel)
-```
-
-- **Breaking Change**: Now requires ParakeetModel parameter (previously took no parameters)
+  ```swift
+  if let text = await SelectedTextService.fetchSelectedText() {
+      // process selection
+  }
+  ```
+- **Don't**: bypass and manipulate the clipboard directly — SelectedTextKit handles that for us.
 
 ---
 
@@ -445,14 +620,13 @@ whisperState.showParakeetModelInFinder(parakeetModel)
 
 ### State Patterns
 
-- **State container**: SwiftUI @StateObject + ObservableObject
-- **State structure**:
-  - App-wide: WhisperState, AIService
-  - View-specific: Local @State
-  - Persistent: @AppStorage, SwiftData
-- **Update patterns**: @Published properties trigger UI updates
-- **Side effects**: Task { } for async operations
-- **Example**:
+- **Containers**: SwiftUI `@StateObject` + `ObservableObject`; injected app-wide via `.environmentObject(...)` from `VoiceInkApp.body`.
+- **Structure**:
+  - App-wide: `VoiceInkEngine`, `AIService`, `AIEnhancementService`, `WhisperModelManager`, `FluidAudioModelManager`, `TranscriptionModelManager`, `RecorderUIManager`, `HotkeyManager`, `MenuBarManager`, `UpdaterViewModel`, `ActiveWindowService`.
+  - View-specific: local `@State` and `@StateObject`-owned view models.
+  - Persistent: `@AppStorage` for primitives, SwiftData (`Transcription`, `VocabularyWord`, `WordReplacement`) for richer data.
+- **Update patterns**: `@Published` properties trigger UI updates.
+- **Side effects**: `Task { ... }` for async work spawned from sync contexts; `@MainActor` for UI mutations.
 
 ```swift
 @Published var isRecording = false {
@@ -468,21 +642,19 @@ whisperState.showParakeetModelInFinder(parakeetModel)
 
 ### Error Patterns
 
-- **Error types**: Custom enums conforming to Error
-- **Handling strategy**: do-try-catch with specific error handling
-- **Logging**: Logger(subsystem: "\(AppConfig.shared.loggerSubsystem)", category: "Feature")
-- **User feedback**: Show alerts for user errors, log system errors
-- **Recovery**: Retry with exponential backoff for network errors
-
-Example:
+- **Error types**: custom enums conforming to `Error` (e.g. `VoiceInkEngineError`).
+- **Strategy**: `do`/`try`/`catch` with provider-specific cases.
+- **Logging**: `Logger(subsystem: AppConfig.shared.loggerSubsystem, category: "Feature")`.
+- **User feedback**: `NSAlert` for user-actionable errors; logger for system-level details.
+- **Recovery**: retry with exponential backoff for transient network errors.
 
 ```swift
 do {
     try await performOperation()
 } catch NetworkError.timeout {
-    // Retry logic
+    // retry logic
 } catch {
-    logger.error("Operation failed: \(error)")
+    logger.error("Operation failed: \(error.localizedDescription, privacy: .public)")
 }
 ```
 
@@ -492,116 +664,85 @@ do {
 
 ### Test Structure
 
-- **Setup pattern**: XCTestCase with setUp()/tearDown()
-- **Mocking approach**: Protocol-based dependency injection
-- **Assertion patterns**: XCTAssert\*, XCTExpectation for async
-- **Test data**: Fixtures in VoiceInkTests/Fixtures/
-- **Example test**: VoiceInkTests/WhisperStateTests.swift
+- **Setup**: `XCTestCase` with `setUp()` / `tearDown()`.
+- **Mocking**: protocol-based dependency injection; e.g. swap `TranscriptionService` implementations.
+- **Assertions**: `XCTAssert*`, `XCTestExpectation` for async, plus Swift Testing's `#expect` where adopted.
+- **Locations**: `VoiceInkTests/` for unit tests, `VoiceInkUITests/` for UI tests.
 
 ### Test Categories
 
-1. **Configuration Tests** (`ConfigurationTests.swift`)
-
-   - Fork.plist loading
-   - Default values
-   - Feature flag behavior
-
-2. **Feature Flag Tests** (`FeatureFlagTests.swift`)
-
-   - Conditional feature enabling
-   - UI element visibility
-   - Service initialization
-
-3. **Integration Tests** (`IntegrationTests.swift`)
-
-   - End-to-end workflows
-   - Service interactions
-   - Data persistence
-
-4. **Migration Tests** (`MigrationTests.swift`)
-   - Schema migrations
-   - Data upgrades
-   - Backward compatibility
+1. **Configuration Tests** (`ConfigurationTests.swift`) — Fork.plist loading, default values, feature-flag behavior.
+2. **Feature Flag Tests** (`FeatureFlagTests.swift`) — conditional feature enabling, UI element visibility, service initialization.
+3. **Integration Tests** (`IntegrationTests.swift`) — end-to-end workflows, service interactions, data persistence.
+4. **Migration Tests** (`MigrationTests.swift`) — SwiftData schema migrations, data upgrades, backward compatibility.
+5. **Base helpers** (`VoiceInkTests.swift`) — shared utilities.
+6. **UI Tests** (`VoiceInkUITests/VoiceInkUITests.swift`, `VoiceInkUITestsLaunchTests.swift`) — main user flows.
 
 ### Running Tests
 
 ```bash
-# All tests
-task test
-
-# Specific test categories
-task test:unit
-task test:ui
-task test:fork
-
-# With coverage
-task test:coverage
+task test                  # all tests
+task test:unit             # unit tests only
+task test:ui               # UI tests only
+task test:fork             # Fork configuration tests
+task test:features         # feature-flag tests
+task test:integration      # integration tests
+task test:coverage         # with coverage report
+task test:filter -- Pattern# matching pattern
+task test:watch            # watch mode
 ```
 
 ---
 
 ## HOW TO: Add a New Transcription Provider
 
-1. Create protocol implementation:
-
-   - Add to Services/CloudTranscription/
-   - Implement TranscriptionService protocol
-   - Follow pattern in OpenAICompatibleTranscriptionService.swift
-
-2. Register in PredefinedModels:
-
-   - Add to Models/PredefinedModels.swift
-   - Include model metadata
-
-3. Update UI:
-
-   - Add configuration in Views/AI Models/
-   - Follow ModelCardRowView pattern
-
-4. Test:
-
-   - Unit test the service
-   - UI test the configuration flow
-
-5. Document:
-   - Add to README if significant
+1. **Implement the protocol**:
+   - For cloud providers, add to `VoiceInk/Transcription/Cloud/` (use `OpenAICompatibleTranscriptionService.swift` as a reference).
+   - For native providers, add to `VoiceInk/Transcription/Native/`.
+   - Conform to `TranscriptionService` (`VoiceInk/Transcription/Engine/TranscriptionService.swift`).
+2. **Register the model**:
+   - Add a `TranscriptionModel` definition in `VoiceInk/Models/TranscriptionModelRegistry.swift`.
+   - Wire the new service into `TranscriptionServiceRegistry`.
+3. **Add UI**:
+   - Add a card in `VoiceInk/Views/AI Models/` (clone the closest existing `*ModelCardView.swift`).
+   - Update `ModelManagementView` if listing/grouping needs to change.
+4. **Test**:
+   - Add a unit test for the service.
+   - Add a UI test for the configuration flow if visible to the user.
+5. **Document**: update `README.md` if the addition is user-facing.
 
 ---
 
 ## HOW TO: Create Your Own Fork
 
-1. Setup your fork:
+1. **Set up the fork**:
 
    ```bash
-   # Run interactive setup
-   ./scripts/setup-fork.sh
+   ./scripts/setup-fork.sh        # interactive
 
-   # Or manually:
+   # …or manually:
    cp Fork.plist.template Fork.plist
-   # Edit Fork.plist with your configuration
+   # edit Fork.plist with your configuration
    ```
 
-2. Add Fork.plist to Xcode:
+2. **Add `Fork.plist` to Xcode**:
+   - Open `VoiceInk.xcodeproj`.
+   - Drag `Fork.plist` into the project navigator.
+   - Confirm membership in the `VoiceInk` target.
 
-   - Open VoiceInk.xcodeproj
-   - Drag Fork.plist into project navigator
-   - Ensure it's added to VoiceInk target
+3. **Configure features**:
+   - Set feature flags in `Fork.plist`.
+   - Configure URLs for any external services you want to enable.
+   - Set bundle identifier prefix and support email.
 
-3. Configure your features:
-
-   - Set feature flags in Fork.plist
-   - Configure URLs for external services
-   - Set bundle identifier and support email
-
-4. Build your fork:
+4. **Build**:
 
    ```bash
-   task build
-   # Or for release:
-   task release
+   task build           # debug
+   task release         # release
    ```
 
-5. Test fork-specific features:
+5. **Test fork-specific features**:
 
    ```bash
    task test:fork
@@ -611,115 +752,69 @@ task test:coverage
 
 ## HOW TO: Configure Feature Flags
 
-1. Edit Fork.plist:
+1. **Edit `Fork.plist`**:
 
    ```xml
    <key>EnableAutoUpdates</key>
-   <true/>  <!-- Enable Sparkle updates -->
-
+   <true/>
    <key>ShowPurchaseOptions</key>
-   <false/> <!-- Disable purchase UI -->
+   <false/>
    ```
 
-2. Feature flag usage in code:
+2. **Use in code**:
 
    ```swift
    if AppConfig.shared.enableLicenseValidation {
-       // License logic
+       // license logic
    }
    ```
 
-3. Available flags:
-
-   - `EnableAutoUpdates`: Sparkle auto-updates
-   - `EnableLicenseValidation`: License checking
-   - `EnableAnnouncements`: Announcement service
-   - `EnableAnalytics`: Usage analytics
-   - `ShowPurchaseOptions`: Purchase UI
-   - `ShowCommunityLinks`: Community links
-   - `ShowDonationLink`: Donation/tip jar
+3. **Available flags**:
+   - `EnableAutoUpdates` — Sparkle auto-updates
+   - `EnableLicenseValidation` — license checking
+   - `EnableAnnouncements` — announcements service
+   - `EnableAnalytics` — Polar analytics
+   - `ShowPurchaseOptions` — purchase UI
+   - `ShowCommunityLinks` — community/Discord links
+   - `ShowDonationLink` — donation/tip-jar link
 
 ---
 
 ## HOW TO: Build and Install Locally
 
-1. Complete setup:
+```bash
+task setup           # one-time
+task build           # debug
+task release         # release
+task install         # install to /Applications
+task clean && task build   # clean rebuild
 
-   ```bash
-   task setup
-   ```
+# Or, without `task`:
+make                 # all (= setup + build)
+make local           # ad-hoc-signed build to ~/Downloads
+```
 
-2. Build debug version:
-
-   ```bash
-   task build
-   ```
-
-3. Build release version:
-
-   ```bash
-   task release
-   ```
-
-4. Install locally:
-
-   ```bash
-   task install
-   ```
-
-5. Clean and rebuild:
-
-   ```bash
-   task clean
-   task build
-   ```
+For ad-hoc-signed builds (no Apple Developer account), use `task build:local` or `make local` — both pick up `LocalBuild.xcconfig` and `VoiceInk.local.entitlements`.
 
 ---
 
 ## HOW TO: Fix a Bug
 
-1. Reproduce:
-
-   - Run app from Xcode
-   - Enable verbose logging: logger.debug()
-
-2. Debug:
-
-   - Use Xcode breakpoints
-   - Check Console.app for system logs
-   - Profile with Instruments if performance
-
-3. Fix pattern:
-
-   - Minimal change to fix issue
-   - Add regression test
-   - Update affected documentation
-
-4. Test:
-
-   - Run full test suite
-   - Manual testing of affected flows
-
-5. Verify:
-   - Check no new warnings
-   - Ensure performance unchanged
+1. **Reproduce**: run from Xcode; enable verbose logging via `logger.debug()` in the suspect category.
+2. **Debug**: Xcode breakpoints, Console.app for system logs, Instruments for performance issues.
+3. **Fix**: minimal change; add a regression test; update affected docs if behavior changed.
+4. **Test**: full test suite + manual exercise of affected flows.
+5. **Verify**: no new warnings; performance unchanged.
 
 ---
 
 ## Performance & Optimization
 
-### Performance Requirements
-
-- **Response time**: < 100ms for UI interactions
-- **Memory limits**: < 500MB typical, < 1GB peak
-- **Optimization patterns**:
-  - Lazy loading for models
-  - Background queues for heavy work
-  - Caching transcription results
-- **Profiling**: Use Instruments (Time Profiler, Allocations)
-- **Bottlenecks**:
-  - Model loading (cache in memory)
-  - Large audio files (stream processing)
+- **Response time**: < 100ms for UI interactions.
+- **Memory**: < 500MB typical, < 1GB peak.
+- **Optimization patterns**: lazy model loading; background queues for heavy work; `ModelPrewarmService` warms the active model on wake from sleep (`PrewarmModelOnWake` UserDefault).
+- **Profiling**: Instruments (Time Profiler, Allocations).
+- **Bottlenecks**: model loading (cache in memory), large audio files (stream/chunk).
 
 ---
 
@@ -727,79 +822,72 @@ task test:coverage
 
 ### External Integrations
 
-- **Whisper.cpp**: Local transcription via C++ framework
-- **Cloud APIs**: OpenAI, Anthropic, Groq via REST
-- **macOS APIs**:
-  - AVFoundation for audio
-  - ScreenCaptureKit for context
-  - Accessibility for window detection
-- **SelectedTextKit**: Text selection extraction from active applications
-- **Sparkle**: Auto-update framework (**optional**, controlled by `EnableAutoUpdates`)
-- **Keychain**: Secure credential storage
+- **whisper.cpp**: local Whisper transcription via `whisper.xcframework` (built from `../whisper.cpp` in Taskfile, or `~/VoiceInk-Dependencies/whisper.cpp` in Makefile).
+- **FluidAudio**: Parakeet ASR via the `FluidAudio` Swift package.
+- **Cloud APIs**: OpenAI-compatible, Anthropic, Groq, Gemini, Mistral, Deepgram, ElevenLabs, Soniox, Speechmatics, xAI — all via REST.
+- **macOS APIs**: AVFoundation (audio), ScreenCaptureKit (context), Accessibility (window detection).
+- **SelectedTextKit**: text-selection extraction from active applications.
+- **Sparkle**: auto-update framework — **optional**, gated by `EnableAutoUpdates`.
+- **Keychain**: secure credential storage (`KeychainService`, `APIKeyManager`).
+- **CloudKit**: optional sync for the dictionary store (vocabulary + replacements); disabled when built with `LOCAL_BUILD`.
 
 ### Optional Services (Controlled by Configuration)
 
-- **License Validation**: Disabled by default (`EnableLicenseValidation`)
-- **Analytics/Telemetry**: Disabled by default (`EnableAnalytics`)
-- **Announcements Service**: Disabled by default (`EnableAnnouncements`)
-- **Auto-Updates**: Disabled by default (`EnableAutoUpdates`)
+- **License validation** — disabled by default (`EnableLicenseValidation`)
+- **Analytics/Telemetry** — disabled by default (`EnableAnalytics`)
+- **Announcements service** — disabled by default (`EnableAnnouncements`)
+- **Auto-updates** — disabled by default (`EnableAutoUpdates`)
 
-All external services are **opt-in** and controlled via Fork.plist configuration.
+All external services are opt-in, controlled via `Fork.plist`.
 
 ---
 
 ## Known Issues & Gotchas
 
 ### Issue: Microphone permission denied silently
-
-**Workaround**: Check AVCaptureDevice.authorizationStatus before recording
+**Workaround**: check `AVCaptureDevice.authorizationStatus(for: .audio)` before recording.
 
 ### Issue: SwiftData migration fails on schema change
-
-**Workaround**: Implement proper VersionedSchema migrations
+**Workaround**: implement proper `VersionedSchema` migrations; remember the dictionary store has its own schema.
 
 ### Issue: Memory spike during long recordings
+**Workaround**: stream audio to disk; process in chunks; ensure model isn't reloaded mid-session.
 
-**Workaround**: Stream audio to disk, process in chunks
+### Issue: FluidAudio model version switching
+**Explanation**: `FluidAudioTranscriptionService` maintains an active-version state and cleans up the previous model when switching variants.
+**Solution**: always call `loadModel(for:)` before `transcribe(...)`. Don't assume models persist across calls.
+
+### Issue: Power Mode persisting between recordings
+**Explanation**: by default, Power Mode-applied configurations always reset between recordings. The user can opt into persistence via the **Persist Configured Preferences** toggle (UserDefault key `powerModePersistConfig`). Don't re-introduce the previous "auto-restore" semantics — they leaked configuration between sessions.
 
 ### Non-Obvious Requirements:
 
-- App must work completely offline (local models)
-- Must respect system audio routing changes
-- Power Mode requires Accessibility permissions
-- Screen capture for context requires permission
-- **Fork.plist must be added to Xcode project after creation**
-- **Bundle identifier changes require clean build**
-- **VoiceInk.entitlements uses dynamic bundle identifier via $(PRODUCT_BUNDLE_IDENTIFIER)**
-- **Whisper.cpp framework must be located at ../whisper.cpp relative to project root**
+- App must work completely offline (local Whisper / FluidAudio / native models).
+- Must respect system audio routing changes (`AudioDeviceManager`).
+- Power Mode requires Accessibility permissions.
+- Screen capture for context requires permission.
+- **`Fork.plist` must be added to the Xcode project after creation** (it's gitignored, so a fresh clone won't include it in the bundle automatically).
+- **Bundle identifier changes require a clean build.**
+- **`VoiceInk.entitlements` uses dynamic bundle identifier via `$(PRODUCT_BUNDLE_IDENTIFIER)`.**
+- **whisper.xcframework location depends on build system**: Taskfile expects `../whisper.cpp`; Makefile expects `~/VoiceInk-Dependencies/whisper.cpp/`. Don't mix the two without cleaning first.
 
 ### Historical Context:
 
-- Originally used Core ML, switched to Whisper for accuracy
-- Power Mode added due to user requests for automation
-- Multiple transcription backends for flexibility/reliability
-- **Forked to enable privacy-focused customization (2025)**
-- **All external communication made optional via configuration**
+- Originally used Core ML; switched to whisper.cpp for accuracy.
+- Power Mode added due to user requests for automation.
+- Multiple transcription backends for flexibility/reliability.
+- **Forked to enable privacy-focused customization (2025).**
+- All external communication made optional via configuration.
 
 ### Fork-Specific Gotchas:
 
-**Issue: Fork.plist not found at runtime**
+**Issue: `Fork.plist` not found at runtime** → must be added to Xcode project membership for `VoiceInk` target so it ends up in the app bundle.
 
-**Solution**: Must add Fork.plist to Xcode project and ensure it's in app bundle
+**Issue: Sparkle framework not found** → conditional compilation with `#if canImport(Sparkle)` handles forks that don't ship Sparkle.
 
-**Issue: Sparkle framework not found**
+**Issue: Feature flags not taking effect** → clean build after `Fork.plist` changes (`task clean && task build`).
 
-**Solution**: Conditional compilation with `#if canImport(Sparkle)`
-
-**Issue: Feature flags not taking effect**
-
-**Solution**: Clean build after Fork.plist changes (`task clean && task build`)
-
-**Issue: ParakeetTranscriptionService model version switching**
-
-**Explanation**: Service maintains activeVersion state and automatically switches between v2/v3 models, cleaning up the previous model when switching.
-
-**Solution**: Always call loadModel() before transcribe() to ensure correct version is loaded. Don't assume models persist across calls.
+**Issue: `LOCAL_BUILD` flag missing in Xcode-only build** → only `task build:local` and `make local` set the flag; building from Xcode directly without selecting the local config will not.
 
 ---
 
@@ -819,8 +907,6 @@ All external communication is **disabled by default** and must be explicitly ena
 
 ### Enabling External Services
 
-To enable any external service, explicitly configure in Fork.plist:
-
 ```xml
 <!-- Only enable what you need -->
 <key>EnableAutoUpdates</key>
@@ -832,97 +918,123 @@ To enable any external service, explicitly configure in Fork.plist:
 
 ### Data Privacy Guarantees
 
-1. **No hardcoded external URLs** - All URLs are configurable
-2. **No telemetry by default** - Must explicitly enable
-3. **Local-first operation** - Works fully offline
-4. **Transparent networking** - All network calls are user-initiated or explicitly configured
-5. **API keys in Keychain** - Never stored in UserDefaults or code
+1. **No hardcoded external URLs** — all URLs are configurable.
+2. **No telemetry by default** — must explicitly enable.
+3. **Local-first operation** — works fully offline.
+4. **Transparent networking** — all network calls are user-initiated or explicitly configured.
+5. **API keys in Keychain** — never stored in UserDefaults or in code.
+6. **HTTP response cache disabled at launch** (`URLCache.shared = URLCache(memoryCapacity: 0, diskCapacity: 0)` — see `VoiceInk.swift:42`) so API responses don't end up in `Cache.db`.
 
 ---
 
 ## Development Tips
 
-### Swift/SwiftUI Best Practices:
+### Swift/SwiftUI Best Practices
 
-- Prefer `if let` over force unwrapping
-- Use `@MainActor` for UI updates
-- Leverage property wrappers effectively
-- Keep views small and composable
+- Prefer `if let` / `guard let` over force unwrapping.
+- Use `@MainActor` for UI updates.
+- Leverage property wrappers (`@StateObject`, `@EnvironmentObject`, `@AppStorage`).
+- Keep views small and composable.
 
-### Common Pitfalls to Avoid:
+### Common Pitfalls to Avoid
 
-- Don't block main thread with transcription
-- Don't store sensitive data in UserDefaults
-- Don't assume permissions are granted
-- Don't ignore memory warnings
+- Don't block main thread with transcription.
+- Don't store sensitive data in UserDefaults.
+- Don't assume permissions are granted.
+- Don't ignore memory warnings.
+- Don't call `transcribe` on a FluidAudio service before `loadModel`.
+- Don't drive `Recorder` directly when `VoiceInkEngine` exists — go through the engine.
 
-### Debugging Helpers:
+### Debugging Helpers
 
-- Enable "Debug > Debug Workflow > View Debugging"
-- Use Console.app for system-level logs
-- Add `.border(Color.red)` to debug view layouts
-- Use `po` in LLDB for object inspection
+- Enable "Debug > Debug Workflow > View Debugging" in Xcode.
+- Use Console.app for system-level logs (filter by `AppConfig.shared.loggerSubsystem`).
+- Add `.border(Color.red)` to debug view layouts.
+- `po` in LLDB for object inspection.
 
 ---
 
 ## Quick Reference
 
-### Key Files:
+### Key Files
 
-- Main app: `VoiceInk/VoiceInk.swift`
-- Recording: `VoiceInk/Whisper/WhisperState.swift`
+- App entry / DI: `VoiceInk/VoiceInk.swift`
+- Recording / transcription engine: `VoiceInk/Transcription/Engine/VoiceInkEngine.swift`
+- Recorder: `VoiceInk/Recorder.swift` + `VoiceInk/CoreAudioRecorder.swift`
 - UI entry: `VoiceInk/Views/ContentView.swift`
-- AI logic: `VoiceInk/Services/AIService.swift`
+- AI provider mgmt: `VoiceInk/Services/AIEnhancement/AIService.swift`
+- AI enhancement: `VoiceInk/Services/AIEnhancement/AIEnhancementService.swift`
+- App defaults: `VoiceInk/AppDefaults.swift`
+- Configuration: `VoiceInk/AppConfig.swift`
+- Notifications: `VoiceInk/Notifications/AppNotifications.swift`
 
-### Important UserDefaults Keys:
+### Important UserDefaults Keys
 
-- "selectedTranscriptionModel"
-- "enableAIEnhancement"
-- "RecorderType" (mini/standard)
-- "powerModeConfigs"
+(Registered defaults live in `VoiceInk/AppDefaults.swift`.)
 
-### Notification Names:
+- `CurrentTranscriptionModel` — currently selected provider/model
+- `isAIEnhancementEnabled` — global enhancement toggle
+- `RecorderType` — `mini` / `notch` / `standard`
+- `IsTextFormattingEnabled`, `IsVADEnabled`, `RemoveFillerWords`, `AppendTrailingSpace`
+- `IsTranscriptionCleanupEnabled`, `TranscriptionRetentionMinutes`, `IsAudioCleanupEnabled`, `AudioRetentionPeriod`
+- `restoreClipboardAfterPaste`, `clipboardRestoreDelay`, `useAppleScriptPaste`
+- `isSystemMuteEnabled`, `audioResumptionDelay`, `isPauseMediaEnabled`, `isSoundFeedbackEnabled`
+- `IsMenuBarOnly`, `hasCompletedOnboarding`, `autoUpdateCheck`, `enableAnnouncements`
+- `powerModePersistConfig` — opt-in persistence for Power Mode preferences (default `false`)
+- `powerModeUIFlag` — bootstrapped on first launch from existing PowerMode configurations (`VoiceInk.swift:49-52`)
+- `SkipShortEnhancement`, `ShortEnhancementWordThreshold`, `EnhancementTimeoutSeconds`, `EnhancementRetryOnTimeout`
+- `PrewarmModelOnWake`, `SelectedLanguage`
+- `isMiddleClickToggleEnabled`, `middleClickActivationDelay`
 
-- `.transcriptionCreated`
-- `.modelDownloadProgress`
-- `.recordingStateChanged`
+### Notification Names
 
-### Build Commands:
+Defined in `VoiceInk/Notifications/AppNotifications.swift`:
 
-**Using Taskfile (Recommended):**
+- `.transcriptionCreated`, `.transcriptionCompleted`, `.transcriptionDeleted`
+- `.toggleMiniRecorder`, `.dismissMiniRecorder`
+- `.didChangeModel`, `.aiProviderKeyChanged`, `.licenseStatusChanged`
+- `.enhancementToggleChanged`, `.promptDidChange`, `.promptSelectionChanged`, `.languageDidChange`
+- `.powerModeConfigurationApplied`
+- `.openFileForTranscription`, `.audioDeviceSwitchRequired`, `.navigateToDestination`
+- `.AppSettingsDidChange`
+
+### Build Commands
+
+**Using Taskfile (recommended):**
 
 ```bash
-# Setup (one-time)
 task setup
-
-# Build operations
-task build           # Debug build
-task build:open      # Build and launch app
-task release        # Release build
-task install        # Install locally
-task clean          # Clean artifacts
-
-# Testing
-task test           # Run all tests
-task test:unit      # Unit tests only
-task test:ui        # UI tests only
-task test:fork      # Fork configuration tests
-
-# Development
-task dev            # Build and watch for changes
-task format         # Format Swift code
+task build              # debug
+task build:local        # ad-hoc signed
+task build:open         # build + launch
+task release            # release
+task install            # install to /Applications
+task clean              # clean artifacts
+task test               # all tests
+task test:unit          # unit tests only
+task test:ui            # UI tests only
+task test:fork          # fork config tests
+task dev                # build + watch
+task dev:xcode          # open in Xcode
 ```
 
-**Direct Xcode commands (alternative):**
+**Using Make (alternative):**
 
 ```bash
-# Build
+make                    # setup + build
+make whisper            # build whisper.xcframework
+make build              # debug build
+make local              # ad-hoc signed → ~/Downloads/VoiceInk.app
+make run                # launch built app
+make dev                # build + run
+make clean              # clean
+```
+
+**Direct Xcode commands (last resort):**
+
+```bash
 xcodebuild -project VoiceInk.xcodeproj -scheme VoiceInk build
-
-# Test
 xcodebuild test -project VoiceInk.xcodeproj -scheme VoiceInk
-
-# Clean
 xcodebuild clean -project VoiceInk.xcodeproj -scheme VoiceInk
 ```
 
@@ -938,32 +1050,27 @@ xcodebuild clean -project VoiceInk.xcodeproj -scheme VoiceInk
    git remote add upstream https://github.com/Beingpax/VoiceInk.git
    ```
 
-2. Fetch and merge updates:
+2. Fetch and merge:
 
    ```bash
    git fetch upstream
    git merge upstream/main
    ```
 
-3. Resolve conflicts in Fork.plist and AppConfig.swift carefully
+3. Resolve conflicts in `Fork.plist`, `AppConfig.swift`, and any feature-flag-gated UI carefully — the upstream may not be aware of forks' privacy-by-default posture.
 
 ### Managing Configuration Changes
 
-- **Fork.plist changes**: Always test feature flags after changes
-- **AppConfig.swift changes**: Ensure backward compatibility
-- **Bundle ID changes**: Requires clean build and may affect user data
+- **`Fork.plist` changes**: always test feature flags after changes.
+- **`AppConfig.swift` changes**: ensure backward compatibility (defaults must keep older Fork.plist files working).
+- **Bundle ID changes**: require a clean build and may strand existing users' Application Support data under the old prefix.
 
 ### Testing Fork-Specific Features
 
 ```bash
-# Test configuration loading
-task test:fork
-
-# Verify feature flags
-task test:features
-
-# Integration tests
-task test:integration
+task test:fork           # configuration loading
+task test:features       # feature flags
+task test:integration    # integration tests
 ```
 
 ---
@@ -972,11 +1079,11 @@ task test:integration
 
 This codebase prioritizes:
 
-1. **Privacy**: Local-first, optional cloud, privacy-by-default configuration
-2. **Performance**: Responsive UI, fast transcription
-3. **Reliability**: Multiple fallback options
-4. **User Experience**: Simple, intuitive interface
-5. **Customizability**: Fork-friendly architecture with configuration system
+1. **Privacy** — local-first, optional cloud, privacy-by-default configuration.
+2. **Performance** — responsive UI, fast transcription.
+3. **Reliability** — multiple fallback options across providers.
+4. **User Experience** — simple, intuitive interface.
+5. **Customizability** — fork-friendly architecture with configuration system.
 
 When developing, always consider:
 
@@ -985,6 +1092,6 @@ When developing, always consider:
 - Does this maintain backward compatibility?
 - Is the performance impact acceptable?
 - Are external services properly gated by configuration?
-- Will this work for all fork configurations?
+- Will this work for all fork configurations (and for ad-hoc-signed local builds)?
 
-Focus on maintaining the existing patterns and architecture. The codebase is well-structured - follow the established conventions for consistency. The fork configuration system enables customization without code changes.
+Focus on maintaining the existing patterns and architecture. The codebase is well-structured — follow the established conventions for consistency. The fork configuration system enables customization without code changes.
