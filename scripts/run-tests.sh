@@ -71,7 +71,7 @@ Options:
 Examples:
     $0                      # Run all tests with coverage
     $0 --type unit         # Run only unit tests
-    $0 --filter WhisperState   # Run tests matching "WhisperState"
+    $0 --filter VoiceInkEngine # Run tests matching "VoiceInkEngine"
     $0 --coverage-report   # Generate coverage report after tests
 
 EOF

@@ -131,8 +131,8 @@ echo "Updating project configuration..."
 sed -i '' "s/com\.jshimko\.VoiceInk/$BUNDLE_ID_PREFIX.VoiceInk/g" VoiceInk.xcodeproj/project.pbxproj
 
 # Update test bundle identifiers
-sed -i '' "s/com\.prakashjoshipax\.VoiceInkTests/$BUNDLE_ID_PREFIX.VoiceInkTests/g" VoiceInk.xcodeproj/project.pbxproj
-sed -i '' "s/com\.prakashjoshipax\.VoiceInkUITests/$BUNDLE_ID_PREFIX.VoiceInkUITests/g" VoiceInk.xcodeproj/project.pbxproj
+sed -i '' "s/com\.jshimko\.VoiceInkTests/$BUNDLE_ID_PREFIX.VoiceInkTests/g" VoiceInk.xcodeproj/project.pbxproj
+sed -i '' "s/com\.jshimko\.VoiceInkUITests/$BUNDLE_ID_PREFIX.VoiceInkUITests/g" VoiceInk.xcodeproj/project.pbxproj
 
 echo "✅ Project bundle identifiers updated!"
 
