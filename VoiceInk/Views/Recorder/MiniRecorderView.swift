@@ -24,6 +24,11 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
             && !stateProvider.partialTranscript.isEmpty
     }
 
+    private var enhancementModelName: String? {
+        guard enhancementService.isEnhancementEnabled else { return nil }
+        return enhancementService.getAIService()?.currentModel
+    }
+
     private var controlBar: some View {
         HStack(spacing: 0) {
             RecorderPromptButton(
@@ -37,7 +42,8 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
 
             RecorderStatusDisplay(
                 currentState: stateProvider.recordingState,
-                audioMeter: recorder.audioMeter
+                audioMeter: recorder.audioMeter,
+                enhancementModelName: enhancementModelName
             )
 
             Spacer(minLength: 0)

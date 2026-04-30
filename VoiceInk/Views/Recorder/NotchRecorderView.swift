@@ -86,6 +86,11 @@ struct NotchRecorderView<S: RecorderStateProvider & ObservableObject>: View {
         displayState == .collapsed ? collapseAnimation : expandAnimation
     }
 
+    private var enhancementModelName: String? {
+        guard enhancementService.isEnhancementEnabled else { return nil }
+        return enhancementService.getAIService()?.currentModel
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -139,7 +144,8 @@ struct NotchRecorderView<S: RecorderStateProvider & ObservableObject>: View {
                 RecorderStatusDisplay(
                     currentState: stateProvider.recordingState,
                     audioMeter: recorder.audioMeter,
-                    menuBarHeight: notchHeight
+                    menuBarHeight: notchHeight,
+                    enhancementModelName: enhancementModelName
                 )
             }
             .padding(.trailing, displayState == .liveText ? 18 : 14)

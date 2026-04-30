@@ -74,6 +74,7 @@ struct ProcessingStatusDisplay: View {
 
     let mode: Mode
     let color: Color
+    var subtitle: String? = nil
 
     private var label: String {
         switch mode {
@@ -90,15 +91,24 @@ struct ProcessingStatusDisplay: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 2) {
             Text(label)
                 .foregroundColor(color)
                 .font(.system(size: 11, weight: .medium))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
 
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .foregroundColor(color.opacity(0.6))
+                    .font(.system(size: 9, weight: .regular))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .minimumScaleFactor(0.7)
+            }
+
             ProgressAnimation(color: color, animationSpeed: animationSpeed)
         }
-        .frame(height: 28) // matches AudioVisualizer maxHeight to prevent layout shift
+        .frame(height: 28)
     }
 }
