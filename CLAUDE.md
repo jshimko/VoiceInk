@@ -889,6 +889,10 @@ All external services are opt-in, controlled via `Fork.plist`.
 
 **Issue: `LOCAL_BUILD` flag missing in Xcode-only build** → only `task build:local` and `make local` set the flag; building from Xcode directly without selecting the local config will not.
 
+**Issue: `task build` (signed Debug/Release) fails with provisioning-profile errors about Push Notifications / iCloud capabilities** → `VoiceInk/VoiceInk.entitlements` declares `com.apple.developer.aps-environment` and `com.apple.developer.icloud-*`; the App ID `<BundleIdentifierPrefix>.VoiceInk` in your Apple Developer account must have **Push Notifications** and **iCloud (with a container `iCloud.<BundleIdentifierPrefix>.VoiceInk`)** enabled, and the provisioning profile regenerated. If you don't need CloudKit dictionary sync (e.g. all `Fork.plist` external services off), use `task build:local` / `make local` instead — `VoiceInk.local.entitlements` strips these capabilities and `LOCAL_BUILD` disables the CloudKit code path. Note: `scripts/build-app.sh` filters output by keyword and **hides these errors by default** — re-run with `./scripts/build-app.sh --verbose` to see the real cause.
+
+**Issue: Build fails after renaming/moving the checkout directory (`error: There is no XCFramework found at '<old-path>/build/SourcePackages/artifacts/sparkle/...'`)** → SPM caches absolute paths in `build/SourcePackages/workspace-state.json`, `build/ModuleCache.noindex/`, and intermediate `*.DependencyStaticMetadataFileList` files. Fix: `rm -rf ./build ./.local-build` (both are gitignored derived-data paths). Same applies to the Makefile's `~/VoiceInk-Dependencies/` if you move that.
+
 ---
 
 ## Privacy & Security Enhancements
