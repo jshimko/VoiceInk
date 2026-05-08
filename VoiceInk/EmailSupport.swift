@@ -3,12 +3,11 @@ import SwiftUI
 import AppKit
 
 struct EmailSupport {
-    static func generateSupportEmailURL() -> URL? {
+    static func generateSupportEmailBody() -> String {
         let config = AppConfig.shared
-        let subject = "\(config.appName) Support Request"
         let systemInfo = SystemInfoService.shared.getSystemInfoString()
 
-        let body = """
+        return """
 
         ------------------------
         ✨ **SCREEN RECORDING HIGHLY RECOMMENDED** ✨
@@ -30,18 +29,31 @@ struct EmailSupport {
 
 
         """
-
-        let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-
-        return URL(string: "mailto:\(config.supportEmail)?subject=\(encodedSubject)&body=\(encodedBody)")
     }
-    
+
+    static func generateSupportEmailURL() -> URL? {
+        let config = AppConfig.shared
+        let subject = "\(config.appName) Support Request"
+        let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return URL(string: "mailto:\(config.supportEmail)?subject=\(encodedSubject)")
+    }
+
     static func openSupportEmail() {
+        let config = AppConfig.shared
+        let subject = "\(config.appName) Support Request"
+        let body = generateSupportEmailBody()
+
+        if let sharingService = NSSharingService(named: .composeEmail) {
+            sharingService.recipients = [config.supportEmail]
+            sharingService.subject = subject
+            sharingService.perform(withItems: [body])
+            return
+        }
+
+        SystemInfoService.shared.copySystemInfoToClipboard()
+
         if let emailURL = generateSupportEmailURL() {
             NSWorkspace.shared.open(emailURL)
         }
     }
-    
-    
 }
