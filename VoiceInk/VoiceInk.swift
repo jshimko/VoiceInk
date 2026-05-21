@@ -19,7 +19,7 @@ struct VoiceInkApp: App {
     @StateObject private var fluidAudioModelManager: FluidAudioModelManager
     @StateObject private var transcriptionModelManager: TranscriptionModelManager
     @StateObject private var recorderUIManager: RecorderUIManager
-    @StateObject private var hotkeyManager: HotkeyManager
+    @StateObject private var recordingShortcutManager: RecordingShortcutManager
     @StateObject private var updaterViewModel: UpdaterViewModel
     @StateObject private var menuBarManager: MenuBarManager
     @StateObject private var aiService = AIService()
@@ -149,8 +149,8 @@ struct VoiceInkApp: App {
         _engine = StateObject(wrappedValue: engine)
 
         // 7. Create other services that depend on engine
-        let hotkeyManager = HotkeyManager(engine: engine, recorderUIManager: recorderUIManager)
-        _hotkeyManager = StateObject(wrappedValue: hotkeyManager)
+        let recordingShortcutManager = RecordingShortcutManager(engine: engine, recorderUIManager: recorderUIManager)
+        _recordingShortcutManager = StateObject(wrappedValue: recordingShortcutManager)
 
         let menuBarManager = MenuBarManager()
         _menuBarManager = StateObject(wrappedValue: menuBarManager)
@@ -283,7 +283,7 @@ struct VoiceInkApp: App {
                     .environmentObject(fluidAudioModelManager)
                     .environmentObject(transcriptionModelManager)
                     .environmentObject(recorderUIManager)
-                    .environmentObject(hotkeyManager)
+                    .environmentObject(recordingShortcutManager)
                     .environmentObject(updaterViewModel)
                     .environmentObject(menuBarManager)
                     .environmentObject(aiService)
@@ -342,7 +342,7 @@ struct VoiceInkApp: App {
                     }
             } else {
                 OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
-                    .environmentObject(hotkeyManager)
+                    .environmentObject(recordingShortcutManager)
                     .environmentObject(engine)
                     .environmentObject(whisperModelManager)
                     .environmentObject(fluidAudioModelManager)
@@ -376,7 +376,7 @@ struct VoiceInkApp: App {
                 .environmentObject(fluidAudioModelManager)
                 .environmentObject(transcriptionModelManager)
                 .environmentObject(recorderUIManager)
-                .environmentObject(hotkeyManager)
+                .environmentObject(recordingShortcutManager)
                 .environmentObject(menuBarManager)
                 .environmentObject(updaterViewModel)
                 .environmentObject(aiService)
@@ -407,6 +407,7 @@ struct VoiceInkApp: App {
 class UpdaterViewModel: ObservableObject {
     @AppStorage("autoUpdateCheck") private var autoUpdateCheck = false
     @Published var canCheckForUpdates = false
+    @Published var automaticallyChecksForUpdates = false
 
     #if canImport(Sparkle)
     private var updaterController: SPUStandardUpdaterController?
