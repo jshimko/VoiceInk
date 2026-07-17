@@ -1,6 +1,6 @@
-import Foundation
 import AVFoundation
 import CoreAudio
+import Foundation
 import os
 
 /// Audio device configuration queries (does NOT modify system default device)

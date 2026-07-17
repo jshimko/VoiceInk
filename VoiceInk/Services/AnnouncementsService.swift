@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 
 /// A minimal pull-based announcements fetcher that shows one-time in-app banners.
 /// This service is conditionally enabled based on the EnableAnnouncements feature flag.
@@ -123,4 +123,5 @@ private struct RemoteAnnouncement: Decodable {
         if let endAt = endAt, let end = formatter.date(from: endAt), date > end { return false }
         return true
     }
+
 }

@@ -1,32 +1,36 @@
 import SwiftUI
 
 struct TrialMessageView: View {
-    let message: String
+    var message: Text?
     let type: MessageType
     var onAddLicenseKey: (() -> Void)? = nil
-    
+
     enum MessageType {
+        case licenseRequired
         case warning
         case expired
         case info
     }
-    
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 20))
                 .foregroundColor(iconColor)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+
+                if let message {
+                    message
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
             }
-            
+
             Spacer()
-            
+
             HStack(spacing: 12) {
                 Button(action: {
                     onAddLicenseKey?()
@@ -36,51 +40,44 @@ struct TrialMessageView: View {
                 }
                 .buttonStyle(.bordered)
 
-                Button(action: {
-                    if let url = URL(string: "https://tryvoiceink.com/buy") {
+                if AppConfig.shared.showPurchaseOptions,
+                    let purchaseURL = AppConfig.shared.purchaseURL,
+                    let url = URL(string: purchaseURL)
+                {
+                    Button(action: {
                         NSWorkspace.shared.open(url)
+                    }) {
+                        Text("Buy License")
+                            .font(.system(size: 13, weight: .medium))
                     }
-                }) {
-                    Text("Buy License")
-                        .font(.system(size: 13, weight: .medium))
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
             }
         }
         .padding()
-        .background(backgroundColor)
-        .cornerRadius(12)
+        .background(AppCardBackground(cornerRadius: 16))
     }
-    
+
     private var icon: String {
         switch type {
+        case .licenseRequired: return "checkmark.seal.fill"
         case .warning: return "exclamationmark.triangle.fill"
         case .expired: return "xmark.circle.fill"
         case .info: return "info.circle.fill"
         }
     }
-    
+
     private var iconColor: Color {
-        switch type {
-        case .warning: return .orange
-        case .expired: return .red
-        case .info: return .blue
-        }
+        AppTheme.Text.secondary
     }
-    
-    private var title: String {
+
+    private var title: LocalizedStringKey {
         switch type {
+        case .licenseRequired: return "License Required"
         case .warning: return "Trial Ending Soon"
         case .expired: return "Trial Expired"
         case .info: return "Trial Active"
         }
     }
-    
-    private var backgroundColor: Color {
-        switch type {
-        case .warning: return Color.orange.opacity(0.1)
-        case .expired: return Color.red.opacity(0.1)
-        case .info: return Color.blue.opacity(0.1)
-        }
-    }
-} 
+
+}

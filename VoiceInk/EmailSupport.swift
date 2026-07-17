@@ -1,6 +1,6 @@
+import AppKit
 import Foundation
 import SwiftUI
-import AppKit
 
 struct EmailSupport {
     static func generateSupportEmailBody() -> String {
@@ -9,26 +9,26 @@ struct EmailSupport {
 
         return """
 
-        ------------------------
-        ✨ **SCREEN RECORDING HIGHLY RECOMMENDED** ✨
-        ▶️ Create a quick screen recording showing the issue!
-        ▶️ It helps me understand and fix the problem much faster.
+            ------------------------
+            ✨ **SCREEN RECORDING HIGHLY RECOMMENDED** ✨
+            ▶️ Create a quick screen recording showing the issue!
+            ▶️ It helps me understand and fix the problem much faster.
 
-        📝 ISSUE DETAILS:
-        - What steps did you take before the issue occurred?
-        - What did you expect to happen?
-        - What actually happened instead?
-
-
-        ## 📋 COMMON ISSUES:
-        \(config.docsURL.map { "Check our docs before sending an email: \($0)" } ?? "")
-        ------------------------
-
-        System Information:
-        \(systemInfo)
+            📝 ISSUE DETAILS:
+            - What steps did you take before the issue occurred?
+            - What did you expect to happen?
+            - What actually happened instead?
 
 
-        """
+            ## 📋 COMMON ISSUES:
+            \(config.docsURL.map { "Check our docs before sending an email: \($0)" } ?? "")
+            ------------------------
+
+            System Information:
+            \(systemInfo)
+
+
+            """
     }
 
     static func generateSupportEmailURL() -> URL? {
